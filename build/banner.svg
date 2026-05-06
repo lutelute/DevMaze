@@ -1,129 +1,187 @@
 <svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0F172A"/>
-      <stop offset="60%" stop-color="#1E293B"/>
-      <stop offset="100%" stop-color="#0F172A"/>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#0E0B04"/>
+      <stop offset="45%"  stop-color="#1A1107"/>
+      <stop offset="100%" stop-color="#110D05"/>
     </linearGradient>
-    <linearGradient id="mainLine" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#1D4ED8" stop-opacity="0.6"/>
-      <stop offset="50%" stop-color="#3B82F6" stop-opacity="0.9"/>
-      <stop offset="100%" stop-color="#60A5FA" stop-opacity="0.5"/>
+    <linearGradient id="goldH" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#7A5520" stop-opacity="0.3"/>
+      <stop offset="50%"  stop-color="#D4A84A" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#7A5520" stop-opacity="0.3"/>
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="6" result="b"/>
+    <radialGradient id="nGold" cx="38%" cy="35%" r="65%">
+      <stop offset="0%"   stop-color="#F0CC80"/>
+      <stop offset="100%" stop-color="#B88A30"/>
+    </radialGradient>
+    <radialGradient id="nDim" cx="38%" cy="35%" r="65%">
+      <stop offset="0%"   stop-color="#C88B3A"/>
+      <stop offset="100%" stop-color="#6A4418"/>
+    </radialGradient>
+    <radialGradient id="heroGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#D4A84A" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#D4A84A" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
-    <filter id="glow2">
-      <feGaussianBlur stdDeviation="3" result="b"/>
+    <filter id="glow-sm" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
-    <filter id="textglow">
-      <feGaussianBlur stdDeviation="8" result="b"/>
+    <filter id="textglow" x="-20%" y="-60%" width="140%" height="220%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+
+    <pattern id="cells" width="68" height="68" patternUnits="userSpaceOnUse">
+      <rect width="68" height="68" fill="#0E0B04"/>
+      <rect x="3" y="3" width="62" height="62" fill="#171009" rx="4"/>
+    </pattern>
   </defs>
 
   <!-- Background -->
   <rect width="1280" height="640" fill="url(#bg)"/>
 
-  <!-- Subtle grid dots -->
-  <g opacity="0.04" fill="#3B82F6">
-    <circle cx="80" cy="160" r="2"/><circle cx="160" cy="160" r="2"/><circle cx="240" cy="160" r="2"/>
-    <circle cx="320" cy="160" r="2"/><circle cx="400" cy="160" r="2"/><circle cx="480" cy="160" r="2"/>
-    <circle cx="80" cy="240" r="2"/><circle cx="160" cy="240" r="2"/><circle cx="240" cy="240" r="2"/>
-    <circle cx="320" cy="240" r="2"/><circle cx="400" cy="240" r="2"/><circle cx="480" cy="240" r="2"/>
-    <circle cx="80" cy="320" r="2"/><circle cx="160" cy="320" r="2"/><circle cx="240" cy="320" r="2"/>
-    <circle cx="320" cy="320" r="2"/><circle cx="400" cy="320" r="2"/><circle cx="480" cy="320" r="2"/>
-    <circle cx="80" cy="400" r="2"/><circle cx="160" cy="400" r="2"/><circle cx="240" cy="400" r="2"/>
-    <circle cx="80" cy="480" r="2"/><circle cx="160" cy="480" r="2"/>
+  <!-- ── LEFT HALF: maze visualization ─────────────────── -->
+  <g clip-path="url(#left-clip)">
+    <clipPath id="left-clip">
+      <rect width="680" height="640"/>
+    </clipPath>
+
+    <!-- dungeon tiles -->
+    <rect width="680" height="640" fill="url(#cells)" opacity="0.5"/>
+
+    <!-- ambient glow -->
+    <ellipse cx="340" cy="320" rx="260" ry="220" fill="url(#heroGlow)"/>
+
+    <!-- Snake path row 1 (y=210) -->
+    <line x1="60"  y1="210" x2="580" y2="210"
+          stroke="url(#goldH)" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+
+    <!-- Turn: right→down→left -->
+    <path d="M 580 210 Q 620 210 620 250 L 620 310 Q 620 350 580 350"
+          stroke="#D4A84A" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.7"/>
+
+    <!-- Snake path row 2 (y=350) -->
+    <line x1="580" y1="350" x2="80"  y2="350"
+          stroke="url(#goldH)" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+
+    <!-- Turn: left→down→right -->
+    <path d="M 80 350 Q 40 350 40 390 L 40 450 Q 40 490 80 490"
+          stroke="#D4A84A" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.7"/>
+
+    <!-- Snake path row 3 (y=490) -->
+    <line x1="80"  y1="490" x2="480" y2="490"
+          stroke="url(#goldH)" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+
+    <!-- Feature branch: up from row1 -->
+    <path d="M 280 210 L 280 130 L 380 130"
+          stroke="#B8A06A" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Feature branch: down from row2 (dashed) -->
+    <path d="M 380 350 L 380 430 L 280 430"
+          stroke="#C88B3A" stroke-width="3.5" fill="none" stroke-linecap="round"
+          stroke-dasharray="10,5" opacity="0.55"/>
+
+    <!-- Row 1 nodes -->
+    <circle cx="100" cy="210" r="13" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="200" cy="210" r="11" fill="url(#nDim)"/>
+    <circle cx="280" cy="210" r="13" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="380" cy="210" r="11" fill="url(#nDim)"/>
+    <circle cx="480" cy="210" r="13" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="560" cy="210" r="11" fill="url(#nDim)" opacity="0.85"/>
+
+    <!-- Feature up node -->
+    <circle cx="380" cy="130" r="10" fill="#B8A06A" filter="url(#glow-sm)" opacity="0.75"/>
+
+    <!-- Hero node (center of composition) -->
+    <circle cx="340" cy="280" r="34" fill="#D4A84A" opacity="0.07" filter="url(#glow)"/>
+    <circle cx="340" cy="280" r="22" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="330" cy="272" r="8"  fill="#FFE8A0" opacity="0.5"/>
+
+    <!-- Row 2 nodes -->
+    <circle cx="500" cy="350" r="11" fill="url(#nDim)"/>
+    <circle cx="400" cy="350" r="13" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="300" cy="350" r="11" fill="url(#nDim)"/>
+    <circle cx="200" cy="350" r="13" fill="url(#nGold)" filter="url(#glow-sm)"/>
+
+    <!-- Feature down nodes -->
+    <circle cx="380" cy="430" r="10" fill="#C88B3A" opacity="0.7"/>
+    <circle cx="280" cy="430" r="10" fill="#C88B3A" opacity="0.65"/>
+
+    <!-- Row 3 nodes -->
+    <circle cx="130" cy="490" r="11" fill="url(#nGold)" filter="url(#glow-sm)" opacity="0.8"/>
+    <circle cx="230" cy="490" r="11" fill="url(#nDim)" opacity="0.75"/>
+    <circle cx="330" cy="490" r="11" fill="url(#nGold)" opacity="0.7"/>
+
+    <!-- Direction arrows -->
+    <text x="598" y="218" font-size="18" fill="#D4A84A" opacity="0.25" font-family="monospace">→</text>
+    <text x="32"  y="358" font-size="18" fill="#D4A84A" opacity="0.22" font-family="monospace" text-anchor="end">←</text>
+    <text x="62"  y="498" font-size="18" fill="#D4A84A" opacity="0.2"  font-family="monospace">→</text>
   </g>
 
-  <!-- RIGHT SIDE: git graph visualization -->
-  <!-- Main spine -->
-  <line x1="580" y1="320" x2="1220" y2="320"
-        stroke="url(#mainLine)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <!-- Divider fade -->
+  <linearGradient id="fade" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#1A1107" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#1A1107" stop-opacity="1"/>
+  </linearGradient>
+  <rect x="480" width="200" height="640" fill="url(#fade)"/>
 
-  <!-- Branch arcs upper -->
-  <path d="M 660 320 Q 730 220 810 320" stroke="#10B981" stroke-width="3.5" fill="none" opacity="0.8" stroke-linecap="round"/>
-  <path d="M 860 320 Q 960 180 1070 320" stroke="#A855F7" stroke-width="3.5" fill="none" opacity="0.75" stroke-linecap="round"/>
+  <!-- ── RIGHT HALF: text ──────────────────────────────── -->
 
-  <!-- Branch arcs lower -->
-  <path d="M 700 320 Q 760 430 820 320" stroke="#F59E0B" stroke-width="3" fill="none" opacity="0.7" stroke-linecap="round"/>
-  <path d="M 940 320 Q 1010 460 1090 320" stroke="#EF4444" stroke-width="3" fill="none" opacity="0.65" stroke-linecap="round"/>
-
-  <!-- Revert dashed -->
-  <path d="M 800 320 Q 750 260 700 320" stroke="#F97316" stroke-width="2.5" fill="none"
-        stroke-dasharray="8,6" opacity="0.6" stroke-linecap="round"/>
-
-  <!-- Main branch nodes -->
-  <circle cx="610" cy="320" r="14" fill="#3B82F6" filter="url(#glow)"/>
-  <circle cx="660" cy="320" r="11" fill="#3B82F6" filter="url(#glow2)"/>
-  <circle cx="810" cy="320" r="11" fill="#3B82F6" filter="url(#glow2)"/>
-  <circle cx="860" cy="320" r="11" fill="#3B82F6" filter="url(#glow2)"/>
-  <circle cx="1070" cy="320" r="11" fill="#3B82F6" filter="url(#glow2)"/>
-  <circle cx="1120" cy="320" r="11" fill="#3B82F6" filter="url(#glow2)"/>
-  <circle cx="1190" cy="320" r="14" fill="#3B82F6" filter="url(#glow)"/>
-
-  <!-- Feature nodes -->
-  <circle cx="730" cy="220" r="10" fill="#10B981" filter="url(#glow2)" opacity="0.9"/>
-  <circle cx="960" cy="180" r="10" fill="#A855F7" filter="url(#glow2)" opacity="0.85"/>
-  <circle cx="1010" cy="180" r="8" fill="#A855F7" opacity="0.7"/>
-  <circle cx="760" cy="430" r="9" fill="#F59E0B" filter="url(#glow2)" opacity="0.85"/>
-  <circle cx="1010" cy="458" r="9" fill="#EF4444" filter="url(#glow2)" opacity="0.8"/>
-  <circle cx="745" cy="270" r="8" fill="#F97316" opacity="0.7"/>
-
-  <!-- Subtle concentric rings on right -->
-  <circle cx="900" cy="320" r="200" fill="none" stroke="#3B82F6" stroke-width="1" opacity="0.04"/>
-  <circle cx="900" cy="320" r="280" fill="none" stroke="#3B82F6" stroke-width="1" opacity="0.03"/>
-
-  <!-- LEFT SIDE: Text content -->
-  <!-- Icon small -->
-  <g transform="translate(80, 80)">
-    <rect width="72" height="72" rx="16" fill="#1E293B"/>
-    <!-- Simplified icon inside -->
-    <line x1="10" y1="36" x2="62" y2="36" stroke="#3B82F6" stroke-width="3" opacity="0.5"/>
-    <path d="M 18 36 Q 28 20 38 36" stroke="#10B981" stroke-width="2.5" fill="none"/>
-    <path d="M 34 36 Q 44 52 54 36" stroke="#EF4444" stroke-width="2.5" fill="none"/>
-    <circle cx="18" cy="36" r="5" fill="#3B82F6" filter="url(#glow2)"/>
-    <circle cx="38" cy="36" r="5" fill="#3B82F6" filter="url(#glow2)"/>
-    <circle cx="54" cy="36" r="5" fill="#3B82F6" filter="url(#glow2)"/>
-    <circle cx="28" cy="20" r="4" fill="#10B981"/>
-    <circle cx="44" cy="52" r="4" fill="#EF4444"/>
+  <!-- Logo mark (small) -->
+  <g transform="translate(710, 190)">
+    <!-- mini snake: 3 nodes -->
+    <line x1="0" y1="0" x2="60" y2="0"  stroke="#D4A84A" stroke-width="3" opacity="0.7"/>
+    <path d="M 60 0 Q 75 0 75 15 L 75 30 Q 75 45 60 45"
+          stroke="#D4A84A" stroke-width="3" fill="none" opacity="0.7"/>
+    <line x1="60" y1="45" x2="10" y2="45" stroke="#D4A84A" stroke-width="3" opacity="0.7"/>
+    <circle cx="0"  cy="0"  r="7" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="30" cy="0"  r="5" fill="url(#nDim)"/>
+    <circle cx="60" cy="0"  r="7" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="60" cy="45" r="7" fill="url(#nGold)" filter="url(#glow-sm)"/>
+    <circle cx="30" cy="45" r="5" fill="url(#nDim)"/>
+    <circle cx="10" cy="45" r="5" fill="url(#nGold)" opacity="0.7"/>
   </g>
 
-  <!-- Main title -->
-  <text x="80" y="230" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
-        font-size="86" font-weight="700" fill="#F1F5F9" letter-spacing="-3" filter="url(#textglow)">DevMaze</text>
+  <!-- App name -->
+  <text x="720" y="310" font-size="88" font-weight="700" fill="#F0E4C8"
+        font-family="'Inter','Helvetica Neue',sans-serif" letter-spacing="-3"
+        filter="url(#textglow)" opacity="0.15">DevMaze</text>
+  <text x="720" y="310" font-size="88" font-weight="700" fill="#F0E4C8"
+        font-family="'Inter','Helvetica Neue',sans-serif" letter-spacing="-3">DevMaze</text>
 
-  <!-- Subtitle -->
-  <text x="82" y="295" font-family="'SF Pro Text', 'Helvetica Neue', Arial, sans-serif"
-        font-size="28" font-weight="400" fill="#64748B" letter-spacing="0.5">Development History Visualizer</text>
+  <!-- Accent underline -->
+  <rect x="720" y="325" width="340" height="3" fill="#D4A84A" opacity="0.7" rx="2"/>
 
-  <!-- Feature tags -->
-  <g transform="translate(80, 340)">
-    <!-- Tag 1 -->
-    <rect width="156" height="36" rx="8" fill="#1D4ED820" stroke="#3B82F640" stroke-width="1"/>
-    <circle cx="20" cy="18" r="6" fill="#3B82F6"/>
-    <text x="34" y="23" font-family="'SF Pro Text', Arial, sans-serif" font-size="14" fill="#93C5FD">Git Graph</text>
-    <!-- Tag 2 -->
-    <rect x="166" width="186" height="36" rx="8" fill="#10B98120" stroke="#10B98140" stroke-width="1"/>
-    <circle cx="186" cy="18" r="6" fill="#10B981"/>
-    <text x="200" y="23" font-family="'SF Pro Text', Arial, sans-serif" font-size="14" fill="#6EE7B7">Trial-and-Error Score</text>
-    <!-- Tag 3 -->
-    <rect x="362" width="132" height="36" rx="8" fill="#A855F720" stroke="#A855F740" stroke-width="1"/>
-    <circle cx="382" cy="18" r="6" fill="#A855F7"/>
-    <text x="396" y="23" font-family="'SF Pro Text', Arial, sans-serif" font-size="14" fill="#D8B4FE">MCP Server</text>
+  <!-- Tagline -->
+  <text x="720" y="375" font-size="22" fill="#A08858"
+        font-family="'Inter','Helvetica Neue',sans-serif" letter-spacing="0.5">
+    Git history as a maze
+  </text>
+
+  <!-- Feature bullets -->
+  <g font-size="16" fill="#7A6040" font-family="'Inter','Helvetica Neue',sans-serif">
+    <text x="726" y="430">◆  Commit graph visualizer</text>
+    <text x="726" y="458">◆  GitHub shorthand  user/repo</text>
+    <text x="726" y="486">◆  Trial-and-error score</text>
+    <text x="726" y="514">◆  Graph + Maze layout</text>
   </g>
 
-  <!-- Bottom badge -->
-  <text x="80" y="560" font-family="'SF Pro Text', 'Helvetica Neue', Arial, sans-serif"
-        font-size="16" fill="#334155">Electron + React + D3.js + @modelcontextprotocol/sdk</text>
+  <!-- Accent dot for each bullet -->
+  <g fill="#D4A84A" opacity="0.6">
+    <circle cx="720" cy="426" r="3"/>
+    <circle cx="720" cy="454" r="3"/>
+    <circle cx="720" cy="482" r="3"/>
+    <circle cx="720" cy="510" r="3"/>
+  </g>
 
-  <!-- Version -->
-  <text x="80" y="590" font-family="'SF Pro Text', Arial, sans-serif"
-        font-size="14" fill="#1E3A5F">v0.1.0</text>
-
-  <!-- Divider line -->
-  <line x1="80" y1="530" x2="520" y2="530" stroke="#1E293B" stroke-width="1"/>
+  <!-- Version badge -->
+  <rect x="720" y="556" width="90" height="26" rx="13"
+        fill="none" stroke="#D4A84A" stroke-width="1.5" opacity="0.4"/>
+  <text x="765" y="573" font-size="12" fill="#A08858" text-anchor="middle"
+        font-family="'Inter','Helvetica Neue',sans-serif" letter-spacing="0.5">v0.2.0</text>
 </svg>
