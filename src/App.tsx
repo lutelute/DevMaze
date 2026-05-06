@@ -175,30 +175,16 @@ function LoadingScreen({ progress }: { progress: string }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', gap: 16,
+      height: '100%', gap: 14,
     }}>
-      <div style={{ fontSize: 32 }}>🌀</div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{progress}</div>
-      <LoadingDots />
-    </div>
-  )
-}
-
-function LoadingDots() {
-  return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      {[0, 1, 2].map(i => (
-        <div key={i} style={{
-          width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
-          animation: `bounce 1.2s ${i * 0.2}s infinite ease-in-out`,
-        }} />
-      ))}
-      <style>{`
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-          40% { transform: scale(1); opacity: 1; }
-        }
-      `}</style>
+      {/* SVG spinner — arc rotating around a dim circle */}
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"
+        style={{ animation: 'spin 0.9s linear infinite' }}>
+        <circle cx="20" cy="20" r="16" stroke="var(--accent)" strokeWidth="3" opacity="0.12"/>
+        <path d="M20 4 A16 16 0 0 1 36 20"
+          stroke="var(--accent)" strokeWidth="3" strokeLinecap="round"/>
+      </svg>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{progress}</div>
     </div>
   )
 }
@@ -209,7 +195,11 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => voi
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       height: '100%', gap: 16, padding: 40,
     }}>
-      <div style={{ fontSize: 32 }}>⚠️</div>
+      <svg width="36" height="36" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#EF4444" strokeWidth="1.4" strokeLinejoin="round"/>
+        <line x1="8" y1="6.5" x2="8" y2="10"   stroke="#EF4444" strokeWidth="1.4" strokeLinecap="round"/>
+        <circle cx="8" cy="11.5" r="0.7" fill="#EF4444"/>
+      </svg>
       <div style={{ color: '#EF4444', fontWeight: 600 }}>解析エラー</div>
       <div style={{
         color: 'var(--text-secondary)', textAlign: 'center', maxWidth: 400,
