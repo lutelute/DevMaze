@@ -11,30 +11,56 @@ type AppState =
   | { phase: 'idle' }
   | { phase: 'loading'; progress: string }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; result: AnalysisResult }
+  | { phase: 'ready'; result: AnalysisResult; fromCache: boolean }
 
 export default function App() {
   const [state, setState] = useState<AppState>({ phase: 'idle' })
   const [selectedNode, setSelectedNode] = useState<MazeNode | null>(null)
   const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set())
   const [recentRepos, setRecentRepos] = useState<string[]>([])
+  const [currentRepoPath, setCurrentRepoPath] = useState<string | null>(null)
 
-  // Declared first so it can be used in effects below
-  const openRepo = useCallback(async (repoPath?: string) => {
-    const resolvedPath = repoPath ?? await window.electronAPI.openRepoDialog()
-    if (!resolvedPath) return
+  const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
+    const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
+    if (!r.ok || !r.data) {
+      setState({ phase: 'error', message: r.error ?? '不明なエラー' })
+      return
+    }
+    setState({ phase: 'ready', result: r.data, fromCache: r.fromCache ?? false })
+    setCurrentRepoPath(repoPath)
+    setRecentRepos(prev => [repoPath, ...prev.filter(p => p !== repoPath)].slice(0, 10))
+  }, [])
+
+  const openRepo = useCallback(async (repoPath?: string, forceRefresh = false) => {
+    const resolved = repoPath ?? await window.electronAPI.openRepoDialog()
+    if (!resolved) return
 
     setState({ phase: 'loading', progress: '初期化中...' })
     setSelectedNode(null)
 
-    const result = await window.electronAPI.analyzeRepo(resolvedPath)
-    if (!result.ok) {
-      setState({ phase: 'error', message: result.error })
+    const result = await window.electronAPI.analyzeRepo(resolved, forceRefresh)
+    handleAnalysisResult(resolved, result)
+  }, [handleAnalysisResult])
+
+  const openGithubRepo = useCallback(async (input: string) => {
+    setState({ phase: 'loading', progress: 'GitHubリポジトリを確認中...' })
+    setSelectedNode(null)
+
+    const result = await window.electronAPI.openGithubRepo(input)
+    // GitHub の場合、repoPath は bare clone のローカルパス（resultから取れないのでinputを仮パスとして記録）
+    const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
+    if (!r.ok || !r.data) {
+      setState({ phase: 'error', message: r.error ?? '不明なエラー' })
       return
     }
-    setState({ phase: 'ready', result: result.data })
-    setRecentRepos(prev => [resolvedPath, ...prev.filter(p => p !== resolvedPath)].slice(0, 10))
+    setState({ phase: 'ready', result: r.data, fromCache: r.fromCache ?? false })
+    setCurrentRepoPath(r.data.repoPath)
+    setRecentRepos(prev => [r.data!.repoPath, ...prev.filter(p => p !== r.data!.repoPath)].slice(0, 10))
   }, [])
+
+  const refreshRepo = useCallback(() => {
+    if (currentRepoPath) openRepo(currentRepoPath, true)
+  }, [currentRepoPath, openRepo])
 
   useEffect(() => {
     window.electronAPI.getRecentRepos().then(setRecentRepos)
@@ -47,7 +73,6 @@ export default function App() {
     return off
   }, [])
 
-  // Dev: auto-open repo from env var DEVMAZE_REPO
   useEffect(() => {
     window.electronAPI.getInitialRepo?.().then(p => {
       if (p) openRepo(p)
@@ -55,38 +80,38 @@ export default function App() {
   }, [openRepo])
 
   const result = state.phase === 'ready' ? state.result : null
+  const fromCache = state.phase === 'ready' ? state.fromCache : false
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-base)' }}>
       <Header
         repoName={result?.repoName}
         onOpenRepo={() => openRepo()}
+        onOpenGithub={openGithubRepo}
         onRecentRepo={openRepo}
+        onRefresh={result ? refreshRepo : undefined}
         recentRepos={recentRepos}
+        fromCache={fromCache}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Sidebar */}
         <Sidebar
           result={result}
           filterTypes={filterTypes}
           onFilterChange={setFilterTypes}
+          recentRepos={recentRepos}
+          currentRepoPath={currentRepoPath}
+          onOpenRecent={openRepo}
         />
 
-        {/* Main Graph Area */}
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-base)' }}>
           {state.phase === 'idle' && (
             <WelcomeScreen onOpen={() => openRepo()} recentRepos={recentRepos} onOpenRecent={openRepo} />
           )}
-
-          {state.phase === 'loading' && (
-            <LoadingScreen progress={state.progress} />
-          )}
-
+          {state.phase === 'loading' && <LoadingScreen progress={state.progress} />}
           {state.phase === 'error' && (
             <ErrorScreen message={state.message} onRetry={() => setState({ phase: 'idle' })} />
           )}
-
           {state.phase === 'ready' && (
             <MazeGraph
               graph={result!.graph}
@@ -97,7 +122,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Right Panel: Node Detail */}
         {selectedNode && (
           <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
         )}

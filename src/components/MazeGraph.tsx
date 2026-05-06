@@ -312,8 +312,8 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
   }, [selectedNodeId])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#1A1107' }}>
+      <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', background: '#1A1107' }} />
 
       {/* Legend overlay */}
       <div style={{

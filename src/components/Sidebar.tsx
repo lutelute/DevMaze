@@ -6,19 +6,34 @@ interface Props {
   result: AnalysisResult | null
   filterTypes: Set<string>
   onFilterChange: (types: Set<string>) => void
+  recentRepos: string[]
+  currentRepoPath: string | null
+  onOpenRecent: (path: string) => void
 }
 
-const TYPE_META: Record<CommitType, { label: string; color: string; emoji: string }> = {
-  normal:    { label: '通常',     color: '#D4A84A', emoji: '●' },
-  feature:   { label: '機能追加', color: '#7B9E5A', emoji: '●' },
-  error_fix: { label: 'バグ修正', color: '#C0624B', emoji: '●' },
-  revert:    { label: 'リバート', color: '#C88B3A', emoji: '●' },
-  merge:     { label: 'マージ',   color: '#8B7355', emoji: '●' },
-  wip:       { label: 'WIP',      color: '#B8A06A', emoji: '●' },
-  release:   { label: 'リリース', color: '#9B8570', emoji: '●' },
+const TYPE_META: Record<CommitType, { label: string; color: string }> = {
+  normal:    { label: '通常',     color: '#D4A84A' },
+  feature:   { label: '機能追加', color: '#7B9E5A' },
+  error_fix: { label: 'バグ修正', color: '#C0624B' },
+  revert:    { label: 'リバート', color: '#C88B3A' },
+  merge:     { label: 'マージ',   color: '#8B7355' },
+  wip:       { label: 'WIP',      color: '#B8A06A' },
+  release:   { label: 'リリース', color: '#9B8570' },
 }
 
-export default function Sidebar({ result, filterTypes, onFilterChange }: Props) {
+function repoLabel(repoPath: string): string {
+  const name = repoPath.split('/').pop() ?? repoPath
+  return name.endsWith('.git') ? name.slice(0, -4) : name
+}
+
+function isGithubBare(repoPath: string): boolean {
+  return repoPath.includes('github-repos')
+}
+
+export default function Sidebar({
+  result, filterTypes, onFilterChange,
+  recentRepos, currentRepoPath, onOpenRecent,
+}: Props) {
   const toggleFilter = (type: string) => {
     const next = new Set(filterTypes)
     if (next.has(type)) next.delete(type)
@@ -28,7 +43,7 @@ export default function Sidebar({ result, filterTypes, onFilterChange }: Props) 
 
   return (
     <aside style={{
-      width: 240,
+      width: 200,
       background: 'var(--bg-panel)',
       borderRight: '1px solid var(--border)',
       display: 'flex',
@@ -36,17 +51,58 @@ export default function Sidebar({ result, filterTypes, onFilterChange }: Props) 
       overflow: 'hidden',
       flexShrink: 0,
     }}>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+        {/* 迷路履歴 */}
+        {recentRepos.length > 0 && (
+          <Section title="迷路">
+            {recentRepos.slice(0, 10).map(repo => {
+              const isCurrent = repo === currentRepoPath
+              const isGH = isGithubBare(repo)
+              return (
+                <button
+                  key={repo}
+                  onClick={() => onOpenRecent(repo)}
+                  title={repo}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    width: '100%', textAlign: 'left',
+                    background: isCurrent ? 'rgba(212,168,74,0.15)' : 'none',
+                    border: `1px solid ${isCurrent ? 'rgba(212,168,74,0.4)' : 'transparent'}`,
+                    borderRadius: 6, padding: '5px 7px', cursor: 'pointer',
+                    transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={e => {
+                    if (!isCurrent) e.currentTarget.style.background = 'var(--bg-hover)'
+                  }}
+                  onMouseLeave={e => {
+                    if (!isCurrent) e.currentTarget.style.background = 'none'
+                  }}
+                >
+                  <span style={{ fontSize: 11, flexShrink: 0 }}>{isGH ? '🐙' : '📁'}</span>
+                  <span style={{
+                    fontSize: 12,
+                    color: isCurrent ? 'var(--accent)' : 'var(--text-secondary)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    fontWeight: isCurrent ? 600 : 400,
+                  }}>
+                    {repoLabel(repo)}
+                  </span>
+                </button>
+              )
+            })}
+          </Section>
+        )}
 
         {/* Stats */}
         {result && (
           <Section title="統計">
-            <StatRow label="コミット総数" value={String(result.stats.totalCommits)} />
-            <StatRow label="ブランチ数"   value={String(result.stats.branchCount)} />
-            <StatRow label="マージ数"     value={String(result.stats.mergeCount)} />
-            <StatRow label="リバート数"   value={String(result.stats.revertCount)} />
-            <StatRow label="バグ修正"     value={String(result.stats.errorFixCount)} />
-            <StatRow label="WIP"          value={String(result.stats.wipCount)} />
+            <StatRow label="コミット数" value={String(result.stats.totalCommits)} />
+            <StatRow label="ブランチ数" value={String(result.stats.branchCount)} />
+            <StatRow label="マージ"     value={String(result.stats.mergeCount)} />
+            <StatRow label="リバート"   value={String(result.stats.revertCount)} />
+            <StatRow label="バグ修正"   value={String(result.stats.errorFixCount)} />
+            <StatRow label="WIP"        value={String(result.stats.wipCount)} />
           </Section>
         )}
 
@@ -90,21 +146,11 @@ export default function Sidebar({ result, filterTypes, onFilterChange }: Props) 
                 color: 'var(--text-dim)', fontSize: 11, cursor: 'pointer',
                 padding: '4px', marginTop: 4, textAlign: 'center',
               }}>
-                フィルタークリア
+                クリア
               </button>
             )}
           </Section>
         )}
-
-        {/* Legend */}
-        <Section title="凡例">
-          {(Object.entries(TYPE_META) as [CommitType, typeof TYPE_META[CommitType]][]).map(([type, meta]) => (
-            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
-              <span style={{ color: meta.color, fontSize: 10 }}>⬤</span>
-              <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{meta.label}</span>
-            </div>
-          ))}
-        </Section>
       </div>
     </aside>
   )
@@ -115,11 +161,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <div style={{
         fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px',
-        color: 'var(--text-dim)', marginBottom: 8,
+        color: 'var(--text-dim)', marginBottom: 6,
       }}>
         {title}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {children}
       </div>
     </div>
@@ -128,7 +174,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
       <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{label}</span>
       <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace', fontWeight: 500, fontSize: 12 }}>{value}</span>
     </div>

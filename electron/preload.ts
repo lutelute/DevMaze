@@ -4,8 +4,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openRepoDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:openRepo'),
 
-  analyzeRepo: (repoPath: string): Promise<unknown> =>
-    ipcRenderer.invoke('repo:analyze', repoPath),
+  analyzeRepo: (repoPath: string, forceRefresh?: boolean): Promise<unknown> =>
+    ipcRenderer.invoke('repo:analyze', repoPath, forceRefresh ?? false),
+
+  openGithubRepo: (input: string): Promise<unknown> =>
+    ipcRenderer.invoke('repo:openGithub', input),
 
   getRecentRepos: (): Promise<string[]> =>
     ipcRenderer.invoke('repo:getRecent'),

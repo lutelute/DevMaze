@@ -25,8 +25,12 @@ function extractRevertedHash(message: string, allHashes: Set<string>): string | 
 export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
   const git: SimpleGit = simpleGit(repoPath)
 
-  const isRepo = await git.checkIsRepo()
-  if (!isRepo) throw new Error(`Not a git repository: ${repoPath}`)
+  // bare repository でも動作するように revparse で確認（checkIsRepo は bare で false を返す場合がある）
+  try {
+    await git.revparse(['HEAD'])
+  } catch {
+    throw new Error(`Gitリポジトリが見つかりません: ${repoPath}`)
+  }
 
   // ===== Step 1: commit metadata via simple-git log =====
   const logResult = await git.log<DefaultLogFields>([
