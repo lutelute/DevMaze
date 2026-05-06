@@ -1,4 +1,4 @@
-import { MazeLogo, FolderIcon, GitBranchIcon, ScoreIcon, AlertIcon, PlugIcon } from './Icons'
+import { MazeLogo, FolderIcon, GitHubIcon, GitBranchIcon, ScoreIcon, AlertIcon, PlugIcon } from './Icons'
 
 interface Props {
   onOpen: () => void
@@ -7,113 +7,222 @@ interface Props {
 }
 
 const features = [
-  { Icon: GitBranchIcon, text: 'Git 履歴を迷路グラフで可視化' },
-  { Icon: ScoreIcon,     text: '試行錯誤スコアを自動算出' },
-  { Icon: AlertIcon,     text: 'エラー・リバートを自動検出' },
-  { Icon: PlugIcon,      text: 'MCP サーバーとして Claude から呼び出し可能' },
+  { Icon: GitBranchIcon, text: 'Git 履歴グラフ + 迷路ビュー' },
+  { Icon: ScoreIcon,     text: '試行錯誤スコア自動算出' },
+  { Icon: AlertIcon,     text: 'エラー・リバート検出' },
+  { Icon: PlugIcon,      text: 'Claude MCP サーバー対応' },
 ]
 
-function isGithubBare(path: string) { return path.includes('github-repos') }
+function repoName(path: string) {
+  return path.split('/').pop()?.replace(/\.git$/, '') ?? path
+}
+function isGH(path: string) { return path.includes('github-repos') }
 
 export default function WelcomeScreen({ onOpen, recentRepos, onOpenRecent }: Props) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', gap: 36, padding: 40,
+      position: 'relative',
+      display: 'flex', height: '100%', overflow: 'hidden',
     }}>
 
-      {/* Logo */}
-      <div style={{ textAlign: 'center' }}>
-        <MazeLogo size={64} style={{ marginBottom: 16 }} />
-        <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.8px', color: 'var(--text-primary)' }}>
-          DevMaze
-        </div>
-        <div style={{ color: 'var(--text-dim)', marginTop: 5, fontSize: 13, letterSpacing: '0.2px' }}>
-          Development History Visualizer
-        </div>
-      </div>
+      {/* ── subtle background grid ─────────────────────── */}
+      <svg style={{
+        position: 'absolute', inset: 0, width: '100%', height: '100%',
+        pointerEvents: 'none',
+      }}>
+        <defs>
+          <pattern id="wgrid" width="48" height="48" patternUnits="userSpaceOnUse">
+            <path d="M48 0 L0 0 0 48" fill="none" stroke="var(--border)" strokeWidth="0.5" opacity="0.4"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#wgrid)"/>
+        {/* radial fade mask */}
+        <radialGradient id="fade" cx="50%" cy="50%" r="60%">
+          <stop offset="0%"   stopColor="var(--bg-base)" stopOpacity="0"/>
+          <stop offset="100%" stopColor="var(--bg-base)" stopOpacity="1"/>
+        </radialGradient>
+        <rect width="100%" height="100%" fill="url(#fade)"/>
+      </svg>
 
-      {/* Open button */}
-      <button
-        onClick={onOpen}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: 'var(--accent)', color: '#1A1107', border: 'none',
-          padding: '11px 28px', borderRadius: 8, cursor: 'pointer',
-          fontWeight: 600, fontSize: 14, letterSpacing: '0.1px',
-          transition: 'opacity 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-      >
-        <FolderIcon size={15} color="#1A1107" />
-        リポジトリを開く
-      </button>
+      {/* ── main content ───────────────────────────────── */}
+      <div style={{
+        position: 'relative', zIndex: 1,
+        display: 'flex', width: '100%', height: '100%',
+        alignItems: 'stretch',
+      }}>
 
-      {/* Feature badges */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 500 }}>
-        {features.map(({ Icon, text }) => (
-          <div key={text} style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            background: 'var(--bg-panel)', borderRadius: 6,
-            padding: '6px 12px', fontSize: 12,
-            color: 'var(--text-secondary)',
-            border: '1px solid var(--border-subtle)',
-          }}>
-            <Icon size={12} color="var(--accent)" />
-            {text}
+        {/* Left column: hero */}
+        <div style={{
+          flex: '0 0 52%',
+          display: 'flex', flexDirection: 'column',
+          justifyContent: 'center', alignItems: 'flex-start',
+          padding: '0 48px 0 64px',
+          borderRight: '1px solid var(--border)',
+        }}>
+
+          {/* Logo mark */}
+          <div style={{ marginBottom: 24 }}>
+            <MazeLogo size={52} color="var(--accent)" />
           </div>
-        ))}
-      </div>
 
-      {/* Recent repos */}
-      {recentRepos.length > 0 && (
-        <div style={{ width: '100%', maxWidth: 460 }}>
+          {/* App name */}
+          <h1 style={{
+            fontSize: 42, fontWeight: 800, letterSpacing: '-1.5px',
+            color: 'var(--text-primary)', margin: 0, lineHeight: 1,
+          }}>
+            DevMaze
+          </h1>
+
+          {/* Tag line */}
+          <p style={{
+            margin: '10px 0 0', fontSize: 12,
+            color: 'var(--text-dim)', letterSpacing: '1.8px',
+            textTransform: 'uppercase', fontWeight: 500,
+          }}>
+            Git History Visualizer
+          </p>
+
+          {/* Accent rule */}
           <div style={{
-            color: 'var(--text-dim)', fontSize: 10, marginBottom: 8,
-            textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600,
-          }}>
-            最近開いたリポジトリ
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {recentRepos.slice(0, 5).map(repo => {
-              const isGH = isGithubBare(repo)
-              const name = repo.split('/').pop()?.replace(/\.git$/, '') ?? repo
-              return (
-                <button key={repo} onClick={() => onOpenRecent(repo)} style={{
-                  display: 'flex', alignItems: 'center', gap: 9,
-                  background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)',
-                  borderRadius: 6, padding: '8px 12px', cursor: 'pointer',
-                  color: 'var(--text-secondary)', fontSize: 12, textAlign: 'left',
-                  transition: 'border-color 0.12s, color 0.12s',
-                }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = 'rgba(212,168,74,0.4)'
-                    e.currentTarget.style.color = 'var(--text-primary)'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = 'var(--border-subtle)'
-                    e.currentTarget.style.color = 'var(--text-secondary)'
-                  }}
-                >
-                  {isGH ? (
-                    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.5, flexShrink: 0 }}>
-                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-                    </svg>
-                  ) : (
-                    <FolderIcon size={11} color="currentColor" style={{ opacity: 0.5, flexShrink: 0 }} />
-                  )}
-                  <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{name}</span>
-                  <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: 10, opacity: 0.35,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-                    {repo}
-                  </span>
-                </button>
-              )
-            })}
+            width: 40, height: 2, background: 'var(--accent)',
+            borderRadius: 2, margin: '28px 0',
+            opacity: 0.8,
+          }} />
+
+          {/* Feature list */}
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 11 }}>
+            {features.map(({ Icon, text }) => (
+              <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Icon size={13} color="var(--accent)" style={{ opacity: 0.75, flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.3 }}>
+                  {text}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {/* CTA */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 40 }}>
+            <button
+              onClick={onOpen}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                background: 'var(--accent)', color: '#1A1107',
+                border: 'none', borderRadius: 7,
+                padding: '10px 20px', fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '-0.1px',
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              <FolderIcon size={13} color="#1A1107" />
+              ローカルを開く
+            </button>
+
+            <button
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                background: 'transparent', color: 'var(--text-secondary)',
+                border: '1px solid var(--border)', borderRadius: 7,
+                padding: '10px 16px', fontSize: 13, fontWeight: 500,
+                cursor: 'default', letterSpacing: '-0.1px',
+                opacity: 0.6,
+              }}
+            >
+              <GitHubIcon size={13} color="currentColor" />
+              GitHub → ヘッダーから
+            </button>
           </div>
         </div>
-      )}
+
+        {/* Right column: recent */}
+        <div style={{
+          flex: 1,
+          display: 'flex', flexDirection: 'column',
+          justifyContent: 'center',
+          padding: '0 40px',
+        }}>
+          {recentRepos.length > 0 ? (
+            <>
+              <div style={{
+                fontSize: 10, fontWeight: 600,
+                color: 'var(--text-dim)', letterSpacing: '1.4px',
+                textTransform: 'uppercase', marginBottom: 16,
+              }}>
+                最近使用
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {recentRepos.slice(0, 7).map(repo => (
+                  <button
+                    key={repo}
+                    onClick={() => onOpenRecent(repo)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: 'transparent',
+                      border: '1px solid transparent',
+                      borderRadius: 7, padding: '9px 12px',
+                      cursor: 'pointer', textAlign: 'left',
+                      transition: 'background 0.12s, border-color 0.12s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'var(--bg-panel)'
+                      e.currentTarget.style.borderColor = 'var(--border)'
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.borderColor = 'transparent'
+                    }}
+                  >
+                    {/* Icon */}
+                    {isGH(repo) ? (
+                      <GitHubIcon size={13} color="var(--text-dim)" style={{ flexShrink: 0 }} />
+                    ) : (
+                      <FolderIcon size={13} color="var(--text-dim)" style={{ flexShrink: 0 }} />
+                    )}
+
+                    {/* Name + path */}
+                    <div style={{ overflow: 'hidden', flex: 1 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 500,
+                        color: 'var(--text-primary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {repoName(repo)}
+                      </div>
+                      <div style={{
+                        fontSize: 10, color: 'var(--text-dim)', marginTop: 1,
+                        fontFamily: 'monospace',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {repo}
+                      </div>
+                    </div>
+
+                    {/* Arrow */}
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                      style={{ opacity: 0.25, flexShrink: 0 }}>
+                      <path d="M4 2 L8 6 L4 10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{
+              color: 'var(--text-dim)', fontSize: 12,
+              textAlign: 'center', lineHeight: 1.8,
+            }}>
+              まだ開いたリポジトリがありません
+              <br />
+              左の「ローカルを開く」または
+              <br />
+              ヘッダーの GitHub から始めてください
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
