@@ -3,9 +3,12 @@ import type { AnalysisResult } from '../shared/types'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import MazeGraph from './components/MazeGraph'
+import MazeModeView from './components/MazeModeView'
 import NodeDetail from './components/NodeDetail'
 import type { MazeNode } from '../shared/types'
 import WelcomeScreen from './components/WelcomeScreen'
+
+type ViewMode = 'graph' | 'maze'
 
 type AppState =
   | { phase: 'idle' }
@@ -18,6 +21,7 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<MazeNode | null>(null)
   const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set())
   const [recentRepos, setRecentRepos] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<ViewMode>('graph')
   const [currentRepoPath, setCurrentRepoPath] = useState<string | null>(null)
 
   const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
@@ -113,12 +117,49 @@ export default function App() {
             <ErrorScreen message={state.message} onRetry={() => setState({ phase: 'idle' })} />
           )}
           {state.phase === 'ready' && (
-            <MazeGraph
-              graph={result!.graph}
-              filterTypes={filterTypes}
-              onNodeClick={setSelectedNode}
-              selectedNodeId={selectedNode?.id}
-            />
+            <>
+              {/* ビュー切り替えボタン */}
+              <div style={{
+                position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+                zIndex: 10, display: 'flex', gap: 2,
+                background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-lg)', padding: 3,
+                boxShadow: 'var(--shadow-sm)',
+              }}>
+                {(['graph', 'maze'] as ViewMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    style={{
+                      padding: '4px 14px', borderRadius: 'var(--radius-md)',
+                      fontSize: 11, fontWeight: 500,
+                      background: viewMode === mode ? 'var(--accent)' : 'transparent',
+                      color: viewMode === mode ? '#1A1107' : 'var(--text-secondary)',
+                      transition: 'all var(--t-base)',
+                      letterSpacing: '0.2px',
+                    }}
+                  >
+                    {mode === 'graph' ? '⬡ Graph' : '⊞ Maze'}
+                  </button>
+                ))}
+              </div>
+
+              {viewMode === 'graph' ? (
+                <MazeGraph
+                  graph={result!.graph}
+                  filterTypes={filterTypes}
+                  onNodeClick={setSelectedNode}
+                  selectedNodeId={selectedNode?.id}
+                />
+              ) : (
+                <MazeModeView
+                  graph={result!.graph}
+                  filterTypes={filterTypes}
+                  onNodeClick={setSelectedNode}
+                  selectedNodeId={selectedNode?.id}
+                />
+              )}
+            </>
           )}
         </div>
 
