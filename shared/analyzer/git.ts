@@ -133,12 +133,19 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
 }
 
 async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
-  const rawStats = await git.raw([
-    'log', '--all',
-    '--format=%H',
-    '--shortstat',
-    '--max-count=1000',
-  ])
+  let rawStats: string
+  try {
+    rawStats = await git.raw([
+      'log', '--all',
+      '--format=%H',
+      '--shortstat',
+      '--max-count=1000',
+    ])
+  } catch {
+    // shallow clone (--depth) や --filter=blob:none の場合、境界コミットで
+    // object が存在しないエラーが起きることがある。stats なしで続行する。
+    return
+  }
 
   const statsMap = new Map<string, { filesChanged: number; insertions: number; deletions: number }>()
   let currentHash = ''
