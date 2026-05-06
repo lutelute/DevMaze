@@ -1,0 +1,9 @@
+{
+  "_comment": "Claude Code の ~/.claude/settings.json か claude_desktop_config.json に mcpServers として追加してください",
+  "mcpServers": {
+    "devmaze": {
+      "command": "node",
+      "args": ["/Users/shigenoburyuto/Documents/GitHub/tool_dev_SGNB/DevMaze/dist-mcp/server.js"]
+    }
+  }
+}
