@@ -1,60 +1,184 @@
+/* ============================================================
+   DevMaze — Global Stylesheet
+   Sand / Earth dark theme
+   ============================================================ */
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* ── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* ── Design tokens ──────────────────────────────────────────── */
 :root {
-  --bg-base:    #1A1107;
-  --bg-panel:   #231609;
-  --bg-hover:   #352210;
-  --border:     #3D2810;
-  --border-dim: #2A1A08;
-  --text-primary:   #F2E8D0;
-  --text-secondary: #A89060;
-  --text-dim:       #6B5035;
-  --accent:     #D4A84A;
-  --accent-dim: #9E7830;
+  /* Background */
+  --bg-base:       #1A1107;
+  --bg-panel:      #221508;
+  --bg-elevated:   #2A1C0C;
+  --bg-hover:      #33200E;
+  --bg-active:     #3D2810;
 
-  /* Commit type colors — earthy palette */
+  /* Border */
+  --border:        #3A2410;
+  --border-subtle: #271608;
+
+  /* Text */
+  --text-primary:   #F0E4C8;
+  --text-secondary: #A08858;
+  --text-dim:       #634E32;
+  --text-disabled:  #3E2E1A;
+
+  /* Accent */
+  --accent:        #D4A84A;
+  --accent-dim:    #9E7830;
+  --accent-muted:  rgba(212, 168, 74, 0.12);
+
+  /* Commit type palette */
   --color-normal:    #D4A84A;
+  --color-feature:   #7B9E5A;
   --color-error-fix: #C0624B;
   --color-revert:    #C88B3A;
   --color-merge:     #8B7355;
   --color-wip:       #B8A06A;
-  --color-feature:   #7B9E5A;
   --color-release:   #9B8570;
+
+  /* Border radius */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* Elevation shadows */
+  --shadow-xs: 0 1px 3px rgba(0,0,0,0.35);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.45);
+  --shadow-md: 0 6px 18px rgba(0,0,0,0.55);
+  --shadow-lg: 0 12px 36px rgba(0,0,0,0.65);
+  --shadow-xl: 0 20px 56px rgba(0,0,0,0.75);
+
+  /* Transitions */
+  --t-fast:   0.10s ease;
+  --t-base:   0.15s ease;
+  --t-slow:   0.25s ease;
+
+  /* Z-index layers */
+  --z-base:    1;
+  --z-overlay: 100;
+  --z-modal:   200;
+  --z-toast:   300;
 }
 
+/* ── Document ───────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
   background-color: var(--bg-base);
   color: var(--text-primary);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
-
-/* Selection */
-::selection { background: #3B82F640; }
-
-/* Monospace */
-.mono {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+/* ── Interactive elements reset ─────────────────────────────── */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  -webkit-app-region: no-drag;
 }
 
-/* Transitions */
-.transition-all { transition: all 0.2s ease; }
+button:disabled {
+  cursor: default;
+}
+
+input, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  border: none;
+  outline: none;
+  background: none;
+  color: inherit;
+}
+
+/* Focus ring — keyboard only */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  {
+  background: var(--border);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--bg-active); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Text selection ─────────────────────────────────────────── */
+::selection {
+  background: rgba(212, 168, 74, 0.25);
+  color: var(--text-primary);
+}
+
+/* ── Monospace ──────────────────────────────────────────────── */
+.mono, code, kbd, pre {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code',
+    ui-monospace, 'SF Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Utility classes ────────────────────────────────────────── */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
