@@ -12,19 +12,20 @@ interface Props {
 type D3Node = MazeNode & d3.SimulationNodeDatum
 type D3Link = { id: string; source: D3Node; target: D3Node; type: MazeEdge['type'] }
 
+// ── Color palette (Sand/Earth) ─────────────────────────────
 const TYPE_COLOR: Record<CommitType, string> = {
   normal:    '#D4A84A',
   feature:   '#7B9E5A',
   error_fix: '#C0624B',
   revert:    '#C88B3A',
-  merge:     '#8B7355',
+  merge:     '#A88B5A',
   wip:       '#B8A06A',
-  release:   '#9B8570',
+  release:   '#E8C060',
 }
 
 const EDGE_COLOR: Record<MazeEdge['type'], string> = {
   parent:       '#4A3018',
-  merge_parent: '#7A6040',
+  merge_parent: '#C8A060',
   revert_of:    '#C88B3A',
 }
 
@@ -34,14 +35,36 @@ const EDGE_DASH: Record<MazeEdge['type'], string> = {
   revert_of:    '3,4',
 }
 
+// Lane band colors (subtle)
+const LANE_BAND_COLORS = [
+  '#7B9E5A', '#C0624B', '#C88B3A', '#8B7355',
+  '#B8A06A', '#9B8570', '#6B9E8A', '#A06A7A',
+]
+
 const DISPLAY_LIMITS = [80, 150, 300, 1000] as const
 const LANE_HEIGHT = 65
 
 function nodeRadius(n: D3Node): number {
-  const base = n.isMainBranch ? 8 : (n.type === 'merge' ? 6 : 5)
-  return base + Math.min(5, Math.sqrt(n.filesChanged ?? 0))
+  if (n.type === 'merge')   return 10
+  if (n.type === 'release') return 10
+  const base = n.isMainBranch ? 8 : 5
+  return base + Math.min(4, Math.sqrt(n.filesChanged ?? 0))
 }
 
+// Diamond path (for merge nodes)
+function diamond(r: number): string {
+  return `M0,${-r} L${r * 0.8},0 L0,${r} L${-r * 0.8},0 Z`
+}
+
+// Hexagon path (for release nodes)
+function hexagon(r: number): string {
+  return Array.from({ length: 6 }, (_, i) => {
+    const a = (i * Math.PI) / 3 - Math.PI / 6
+    return `${i === 0 ? 'M' : 'L'}${Math.cos(a) * r},${Math.sin(a) * r}`
+  }).join(' ') + 'Z'
+}
+
+// ── Component ──────────────────────────────────────────────
 export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNodeId }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [displayLimit, setDisplayLimit] = useState<number>(150)
@@ -53,23 +76,22 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
 
     const sorted = [...filtered].sort((a, b) => b.timestamp - a.timestamp)
     const limited = sorted.slice(0, displayLimit)
-
     const activeNodes: D3Node[] = limited.map(n => ({ ...n })) as D3Node[]
     const nodeIds = new Set(activeNodes.map(n => n.id))
 
     const activeLinks = graph.edges
       .filter(e => {
-        const src = typeof e.source === 'string' ? e.source : (e.source as MazeNode).id
-        const tgt = typeof e.target === 'string' ? e.target : (e.target as MazeNode).id
-        return nodeIds.has(src) && nodeIds.has(tgt)
+        const s = typeof e.source === 'string' ? e.source : (e.source as MazeNode).id
+        const t = typeof e.target === 'string' ? e.target : (e.target as MazeNode).id
+        return nodeIds.has(s) && nodeIds.has(t)
       })
       .map(e => {
-        const srcId = typeof e.source === 'string' ? e.source : (e.source as MazeNode).id
-        const tgtId = typeof e.target === 'string' ? e.target : (e.target as MazeNode).id
+        const sId = typeof e.source === 'string' ? e.source : (e.source as MazeNode).id
+        const tId = typeof e.target === 'string' ? e.target : (e.target as MazeNode).id
         return {
           id: e.id,
-          source: activeNodes.find(n => n.id === srcId)!,
-          target: activeNodes.find(n => n.id === tgtId)!,
+          source: activeNodes.find(n => n.id === sId)!,
+          target: activeNodes.find(n => n.id === tId)!,
           type: e.type,
         }
       })
@@ -89,203 +111,300 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
     const container = svgRef.current!
     const W = container.clientWidth || 800
     const H = container.clientHeight || 600
-
     if (nodes.length === 0) return
 
-    // Markers
+    // ── defs ──────────────────────────────────────────────
     const defs = svg.append('defs')
 
-    // Glow filter for main branch
-    const glow = defs.append('filter').attr('id', 'glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
-    glow.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur')
-    const feMerge = glow.append('feMerge')
-    feMerge.append('feMergeNode').attr('in', 'coloredBlur')
-    feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
+    // Glow filter
+    const glow = defs.append('filter').attr('id', 'glow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
+    glow.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur')
+    const fm = glow.append('feMerge')
+    fm.append('feMergeNode').attr('in', 'coloredBlur')
+    fm.append('feMergeNode').attr('in', 'SourceGraphic')
 
+    // Milestone glow
+    const mGlow = defs.append('filter').attr('id', 'milestone-glow').attr('x', '-30%').attr('y', '-50%').attr('width', '160%').attr('height', '200%')
+    mGlow.append('feGaussianBlur').attr('stdDeviation', '6').attr('result', 'b')
+    const mfm = mGlow.append('feMerge')
+    mfm.append('feMergeNode').attr('in', 'b')
+    mfm.append('feMergeNode').attr('in', 'SourceGraphic')
+
+    // Edge markers
     ;(['parent', 'merge_parent', 'revert_of'] as MazeEdge['type'][]).forEach(type => {
       defs.append('marker')
         .attr('id', `arr-${type}`)
-        .attr('viewBox', '0 -4 8 8').attr('refX', 18).attr('refY', 0)
+        .attr('viewBox', '0 -4 8 8').attr('refX', 20).attr('refY', 0)
         .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
         .append('path').attr('d', 'M0,-4L8,0L0,4')
         .attr('fill', EDGE_COLOR[type])
-        .attr('opacity', type === 'parent' ? 0.5 : 0.85)
+        .attr('opacity', type === 'parent' ? 0.5 : 0.9)
     })
 
     svg.style('background', '#1A1107')
     const g = svg.append('g').attr('class', 'zoom-layer')
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.02, 10])
+      .scaleExtent([0.02, 12])
       .on('zoom', event => {
         g.attr('transform', event.transform)
-        const scale = event.transform.k
-        const labelOpacity = scale > 0.4 ? Math.min(1, (scale - 0.4) * 2.5) : 0
-        g.selectAll('text.label').attr('opacity', labelOpacity)
-        // Hide spine line decorations at very low zoom
-        g.selectAll('.spine-label').attr('opacity', scale > 0.25 ? 1 : 0)
+        const k = event.transform.k
+        // Labels visible at k > 0.35
+        const lOp = k > 0.35 ? Math.min(1, (k - 0.35) * 3) : 0
+        g.selectAll<SVGTextElement, unknown>('text.commit-label').attr('opacity', lOp)
+        g.selectAll<SVGTextElement, unknown>('text.lane-label').attr('opacity', Math.min(1, k * 0.8))
+        g.selectAll<SVGTextElement, unknown>('.milestone-label').attr('opacity', Math.min(1, k * 1.5))
+        g.selectAll<SVGLineElement, unknown>('.milestone-gate').attr('opacity', Math.min(0.6, k * 0.8))
       })
     svg.call(zoom)
 
-    // Time scale — compact horizontal spread
+    // ── Time & layout ─────────────────────────────────────
     const timestamps = nodes.map(n => n.timestamp)
     const tMin = Math.min(...timestamps)
     const tMax = Math.max(...timestamps)
     const tRange = tMax - tMin || 1
-    // Keep spread to roughly 15-18px per node, bounded reasonably
-    const spreadW = Math.min(W * 4, Math.max(W * 1.5, nodes.length * 16))
+    const spreadW = Math.min(W * 5, Math.max(W * 1.5, nodes.length * 18))
     const xPos = (t: number) => ((t - tMin) / tRange) * spreadW
 
     const maxLane = Math.max(1, ...nodes.map(n => Math.abs(n.lane)))
+    const laneH   = maxLane * LANE_HEIGHT
 
-    // ===== Main branch spine line =====
+    // ── Lane bands ────────────────────────────────────────
+    for (let lane = -maxLane; lane <= maxLane; lane++) {
+      const yLane = lane * LANE_HEIGHT
+      const laneNodes = nodes.filter(n => n.lane === lane)
+      if (laneNodes.length === 0 && lane !== 0) continue
+
+      const bandColor = lane === 0 ? '#D4A84A' : LANE_BAND_COLORS[(Math.abs(lane) - 1) % LANE_BAND_COLORS.length]
+      const bandOp    = lane === 0 ? 0.05 : 0.03
+
+      g.append('rect')
+        .attr('class', 'lane-band')
+        .attr('x', -200)
+        .attr('y', yLane - LANE_HEIGHT / 2 + 6)
+        .attr('width', spreadW + 400)
+        .attr('height', LANE_HEIGHT - 12)
+        .attr('fill', bandColor)
+        .attr('opacity', bandOp)
+        .attr('rx', 6)
+    }
+
+    // ── Main spine ────────────────────────────────────────
     const mainNodes = nodes.filter(n => n.isMainBranch).sort((a, b) => a.timestamp - b.timestamp)
     if (mainNodes.length > 1) {
       g.append('line')
-        .attr('class', 'main-spine')
         .attr('x1', xPos(mainNodes[0].timestamp))
         .attr('y1', 0)
         .attr('x2', xPos(mainNodes[mainNodes.length - 1].timestamp))
         .attr('y2', 0)
-        .attr('stroke', '#3D2810')
-        .attr('stroke-width', 3)
-        .attr('stroke-dasharray', '8,4')
-        .attr('opacity', 0.7)
-
-      // "MAIN" label
-      g.append('text')
-        .attr('class', 'spine-label')
-        .attr('x', xPos(mainNodes[0].timestamp) - 20)
-        .attr('y', -14)
-        .attr('fill', '#D4A84A40')
-        .attr('font-size', 10)
-        .attr('font-family', 'JetBrains Mono, monospace')
-        .attr('font-weight', '600')
-        .attr('letter-spacing', '2px')
-        .text('MAIN')
+        .attr('stroke', '#D4A84A')
+        .attr('stroke-width', 2.5)
+        .attr('stroke-dasharray', '10,5')
+        .attr('opacity', 0.18)
     }
 
-    // Lane guide lines (subtle)
-    for (let lane = -maxLane; lane <= maxLane; lane++) {
-      if (lane === 0) continue
-      const yLane = lane * LANE_HEIGHT
-      const laneNodes = nodes.filter(n => n.lane === lane).sort((a, b) => a.timestamp - b.timestamp)
-      if (laneNodes.length === 0) continue
+    // ── Milestone gates (tags / releases) ─────────────────
+    const taggedNodes = nodes.filter(n => n.tagNames.length > 0 || n.type === 'release')
+    taggedNodes.forEach(n => {
+      const x  = xPos(n.timestamp)
+      const gh = laneH + LANE_HEIGHT
+
+      // Gate line
       g.append('line')
-        .attr('x1', xPos(laneNodes[0].timestamp) - 20)
-        .attr('y1', yLane)
-        .attr('x2', xPos(laneNodes[laneNodes.length - 1].timestamp) + 20)
-        .attr('y2', yLane)
-        .attr('stroke', '#1E293B')
+        .attr('class', 'milestone-gate')
+        .attr('x1', x).attr('y1', -gh)
+        .attr('x2', x).attr('y2', gh)
+        .attr('stroke', '#D4A84A')
         .attr('stroke-width', 1)
-        .attr('opacity', 0.4)
-    }
+        .attr('stroke-dasharray', '5,4')
+        .attr('opacity', 0.35)
+        .attr('filter', 'url(#milestone-glow)')
 
-    // Links
+      // Tags above
+      n.tagNames.slice(0, 2).forEach((tag, i) => {
+        const yy = -gh - 10 - i * 18
+        g.append('rect')
+          .attr('class', 'milestone-label')
+          .attr('x', x - 4).attr('y', yy - 12)
+          .attr('width', tag.length * 6.2 + 12).attr('height', 16)
+          .attr('fill', '#3D2810').attr('rx', 4).attr('opacity', 0.85)
+        g.append('text')
+          .attr('class', 'milestone-label')
+          .attr('x', x + 2).attr('y', yy)
+          .attr('text-anchor', 'start')
+          .attr('fill', '#D4A84A')
+          .attr('font-size', 9).attr('font-family', 'JetBrains Mono, monospace')
+          .attr('font-weight', '600')
+          .attr('opacity', 0.9)
+          .text(tag)
+      })
+    })
+
+    // ── Branch name labels (left anchor per lane) ─────────
+    const laneMap = new Map<number, string>()
+    nodes.forEach(n => {
+      if (!laneMap.has(n.lane)) {
+        const name = n.branchNames.find(b => !/^(origin\/|HEAD)/.test(b) && b !== 'HEAD')
+          ?? (n.lane === 0 ? 'main' : `lane ${n.lane}`)
+        laneMap.set(n.lane, name)
+      }
+    })
+    laneMap.forEach((name, lane) => {
+      const bandColor = lane === 0 ? '#D4A84A' : LANE_BAND_COLORS[(Math.abs(lane) - 1) % LANE_BAND_COLORS.length]
+      g.append('text')
+        .attr('class', 'lane-label')
+        .attr('x', -30)
+        .attr('y', lane * LANE_HEIGHT + 4)
+        .attr('text-anchor', 'end')
+        .attr('fill', bandColor)
+        .attr('font-size', 9)
+        .attr('font-family', 'JetBrains Mono, monospace')
+        .attr('font-weight', '500')
+        .attr('opacity', 0.5)
+        .text(name.length > 20 ? name.slice(0, 18) + '…' : name)
+    })
+
+    // ── Edges ─────────────────────────────────────────────
     const linkGroup = g.append('g').attr('class', 'links')
     const linkElems = linkGroup.selectAll<SVGLineElement, D3Link>('line')
       .data(links).join('line')
       .attr('stroke', d => EDGE_COLOR[d.type])
       .attr('stroke-width', d => {
-        if (d.type === 'revert_of') return 2
-        return (d.source as D3Node).isMainBranch && (d.target as D3Node).isMainBranch ? 2 : 1
+        if (d.type === 'merge_parent') return 2.5
+        if (d.type === 'revert_of')   return 2
+        return d.source.isMainBranch && d.target.isMainBranch ? 2.5 : 1.2
       })
       .attr('stroke-dasharray', d => EDGE_DASH[d.type])
       .attr('opacity', d => {
-        if (d.type === 'revert_of') return 0.9
-        if (d.type === 'merge_parent') return 0.7
-        return 0.4
+        if (d.type === 'merge_parent') return 0.85
+        if (d.type === 'revert_of')   return 0.9
+        return 0.45
       })
       .attr('marker-end', d => `url(#arr-${d.type})`)
 
-    // Nodes
+    // ── Nodes ─────────────────────────────────────────────
     const nodeGroup = g.append('g').attr('class', 'nodes')
     const nodeElems = nodeGroup.selectAll<SVGGElement, D3Node>('g.node')
       .data(nodes, d => d.id).join('g')
       .attr('class', 'node').style('cursor', 'pointer')
 
-    // Glow ring
+    // Glow halo
     nodeElems.append('circle')
       .attr('class', 'glow')
-      .attr('r', d => nodeRadius(d) + 5)
+      .attr('r', d => nodeRadius(d) + 6)
       .attr('fill', d => TYPE_COLOR[d.type])
       .attr('opacity', 0)
 
-    // Main circle
-    nodeElems.append('circle')
-      .attr('class', 'main-circle')
-      .attr('r', d => nodeRadius(d))
-      .attr('fill', d => TYPE_COLOR[d.type])
-      .attr('stroke', d => d.isMainBranch ? '#EDD090' : '#1A1107')
-      .attr('stroke-width', d => d.isMainBranch ? 2 : 1.5)
-      .attr('filter', d => d.isMainBranch ? 'url(#glow)' : 'none')
+    // Shape by type
+    nodeElems.each(function(d) {
+      const sel = d3.select(this)
+      const c   = TYPE_COLOR[d.type]
+      const r   = nodeRadius(d)
 
-    // Tag indicator
+      if (d.type === 'merge') {
+        sel.append('path')
+          .attr('class', 'main-circle')
+          .attr('d', diamond(r))
+          .attr('fill', `${c}33`)
+          .attr('stroke', c)
+          .attr('stroke-width', 2)
+      } else if (d.type === 'release') {
+        sel.append('path')
+          .attr('class', 'main-circle')
+          .attr('d', hexagon(r))
+          .attr('fill', `${c}40`)
+          .attr('stroke', c)
+          .attr('stroke-width', 2.5)
+          .attr('filter', 'url(#glow)')
+      } else {
+        sel.append('circle')
+          .attr('class', 'main-circle')
+          .attr('r', r)
+          .attr('fill', d.isMainBranch ? `${c}55` : `${c}2A`)
+          .attr('stroke', c)
+          .attr('stroke-width', d.isMainBranch ? 2.5 : 1.5)
+          .attr('filter', d.isMainBranch ? 'url(#glow)' : 'none')
+      }
+    })
+
+    // Tag dot
     nodeElems.filter(d => d.tagNames.length > 0)
       .append('circle')
-      .attr('r', 3)
-      .attr('cx', d => nodeRadius(d) + 1)
-      .attr('cy', d => -nodeRadius(d) - 1)
-      .attr('fill', '#F59E0B')
-      .attr('stroke', '#0F172A')
+      .attr('r', 3.5)
+      .attr('cx', d => nodeRadius(d))
+      .attr('cy', d => -nodeRadius(d))
+      .attr('fill', '#D4A84A')
+      .attr('stroke', '#1A1107')
       .attr('stroke-width', 1)
 
-    // Label
+    // Short hash label (visible on zoom-in)
     nodeElems.append('text')
       .attr('class', 'label')
       .attr('dy', d => nodeRadius(d) + 11)
       .attr('text-anchor', 'middle')
-      .attr('fill', d => d.isMainBranch ? '#EDD09080' : '#6B503580')
+      .attr('fill', d => d.isMainBranch ? '#D4A84A80' : '#8B703580')
       .attr('font-size', 8)
       .attr('font-family', 'JetBrains Mono, monospace')
       .attr('pointer-events', 'none')
       .attr('opacity', 0)
       .text(d => d.label)
 
-    // Events
+    // Commit message label for important commits (merge / release / tag)
+    nodeElems
+      .filter(d => d.type === 'merge' || d.type === 'release' || d.tagNames.length > 0)
+      .append('text')
+      .attr('class', 'commit-label')
+      .attr('dy', d => -nodeRadius(d) - 8)
+      .attr('text-anchor', 'middle')
+      .attr('fill', d => TYPE_COLOR[d.type])
+      .attr('font-size', 8.5)
+      .attr('font-family', 'JetBrains Mono, monospace')
+      .attr('font-weight', '500')
+      .attr('pointer-events', 'none')
+      .attr('opacity', 0)
+      .text(d => {
+        const msg = d.message.split('\n')[0]
+        return msg.length > 28 ? msg.slice(0, 26) + '…' : msg
+      })
+
+    // ── Events ────────────────────────────────────────────
     nodeElems
       .on('mouseenter', function(event, d) {
-        d3.select(this).select('.glow').attr('opacity', 0.25)
-        d3.select(this).select('.main-circle').attr('stroke', '#fff').attr('stroke-width', 2.5)
+        d3.select(this).select('.glow').attr('opacity', 0.28)
         showTooltip(event, d)
       })
       .on('mousemove', (event) => moveTooltip(event))
       .on('mouseleave', function(_, d) {
         const sel = d.id === selectedNodeId
         d3.select(this).select('.glow').attr('opacity', sel ? 0.3 : 0)
-        d3.select(this).select('.main-circle')
-          .attr('stroke', sel ? '#fff' : (d.isMainBranch ? '#93C5FD' : '#0F172A'))
-          .attr('stroke-width', sel ? 2.5 : (d.isMainBranch ? 2 : 1.5))
         hideTooltip()
       })
       .on('click', (_, d) => handleNodeClick(d))
 
     // Drag
     const drag = d3.drag<SVGGElement, D3Node>()
-      .on('start', (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
-      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y })
-      .on('end', (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null })
+      .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
+      .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y })
+      .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null })
     nodeElems.call(drag)
 
-    // ===== Force simulation with swimlanes =====
+    // ── Force simulation ──────────────────────────────────
     const sim = d3.forceSimulation<D3Node>(nodes)
       .force('link', d3.forceLink<D3Node, D3Link>(links)
         .id(d => d.id)
-        .distance(d => d.type === 'parent' ? 40 : 70)
-        .strength(d => d.type === 'parent' ? 0.85 : 0.4)
+        .distance(d => d.type === 'parent' ? 42 : 75)
+        .strength(d => d.type === 'parent' ? 0.85 : 0.35)
       )
       .force('charge', d3.forceManyBody<D3Node>()
-        .strength(-220).distanceMin(8).distanceMax(350)
+        .strength(-250).distanceMin(8).distanceMax(380)
       )
-      // Strong x positioning by time
       .force('x', d3.forceX<D3Node>(d => xPos(d.timestamp))
-        .strength(d => d.isMainBranch ? 0.5 : 0.25)
+        .strength(d => d.isMainBranch ? 0.5 : 0.22)
       )
-      // Y: main branch → y=0, features → y = lane * LANE_HEIGHT
       .force('y', d3.forceY<D3Node>(d => d.lane * LANE_HEIGHT)
-        .strength(d => d.isMainBranch ? 0.7 : 0.4)
+        .strength(d => d.isMainBranch ? 0.75 : 0.38)
       )
-      .force('collision', d3.forceCollide<D3Node>(d => nodeRadius(d) + 4))
+      .force('collision', d3.forceCollide<D3Node>(d => nodeRadius(d) + 5))
       .velocityDecay(0.45)
       .alphaDecay(0.02)
 
@@ -297,7 +416,6 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
     })
 
     sim.on('end', () => fitView(svg, g, zoom, nodes, W, H))
-    // Fallback: ensure fitView fires even if sim.on('end') doesn't trigger
     const fitTimer = setTimeout(() => fitView(svg, g, zoom, nodes, W, H), 4000)
 
     if (selectedNodeId) applyHighlight(nodeElems, selectedNodeId)
@@ -315,37 +433,69 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#1A1107' }}>
       <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', background: '#1A1107' }} />
 
-      {/* Legend overlay */}
+      {/* Legend */}
       <div style={{
-        position: 'absolute', top: 12, right: 12, display: 'flex', gap: 8,
-        background: '#0F172ACC', backdropFilter: 'blur(6px)',
-        border: '1px solid #1E293B', borderRadius: 8, padding: '6px 10px', fontSize: 10,
+        position: 'absolute', top: 12, right: 12,
+        display: 'flex', flexDirection: 'column', gap: 5,
+        background: 'rgba(26,17,7,0.88)', backdropFilter: 'blur(8px)',
+        border: '1px solid var(--border)', borderRadius: 8,
+        padding: '8px 12px', fontSize: 10,
       }}>
-        <LegendItem color="#3B82F6" label="MAIN" dotStyle={{ boxShadow: '0 0 6px #3B82F6' }} />
-        <LegendItem color="#8B5CF6" label="Merge" dashed />
-        <LegendItem color="#F97316" label="Revert" dashed />
+        <div style={{ color: 'var(--text-dim)', fontWeight: 600, letterSpacing: '0.8px', marginBottom: 2 }}>凡例</div>
+        {([
+          { label: 'Main',     color: TYPE_COLOR.normal,    shape: 'circle',  main: true,  dashed: false },
+          { label: 'Feature',  color: TYPE_COLOR.feature,   shape: 'circle',  main: false, dashed: false },
+          { label: 'Merge',    color: TYPE_COLOR.merge,     shape: 'diamond', main: false, dashed: false },
+          { label: 'Release',  color: TYPE_COLOR.release,   shape: 'hex',     main: false, dashed: false },
+          { label: 'Bugfix',   color: TYPE_COLOR.error_fix, shape: 'circle',  main: false, dashed: false },
+          { label: 'Revert',   color: TYPE_COLOR.revert,    shape: 'circle',  main: false, dashed: true  },
+          { label: 'Milestone',color: '#D4A84A',            shape: 'gate',    main: false, dashed: false },
+        ]).map(({ label, color, shape, dashed, main }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {shape === 'gate' ? (
+              <div style={{ width: 2, height: 12, background: color, opacity: 0.7, borderRadius: 1 }} />
+            ) : shape === 'diamond' ? (
+              <svg width="12" height="12" viewBox="-6 -6 12 12">
+                <path d={diamond(5)} fill={`${color}30`} stroke={color} strokeWidth="1.5"/>
+              </svg>
+            ) : shape === 'hex' ? (
+              <svg width="12" height="12" viewBox="-6 -6 12 12">
+                <path d={hexagon(5)} fill={`${color}30`} stroke={color} strokeWidth="1.5"/>
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="-6 -6 12 12">
+                <circle r={main ? 5 : 4} fill={`${color}33`} stroke={color}
+                  strokeWidth={main ? 2 : 1.5}
+                  strokeDasharray={dashed ? '3,2' : 'none'}/>
+              </svg>
+            )}
+            <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+          </div>
+        ))}
       </div>
 
-      {/* Display limit controls */}
+      {/* Display limit */}
       <div style={{
-        position: 'absolute', bottom: 16, right: 16,
-        display: 'flex', alignItems: 'center', gap: 6,
-        background: '#1E293BCC', backdropFilter: 'blur(8px)',
-        border: '1px solid #334155', borderRadius: 8, padding: '5px 10px', fontSize: 11, color: '#94A3B8',
+        position: 'absolute', bottom: 14, right: 14,
+        display: 'flex', alignItems: 'center', gap: 5,
+        background: 'rgba(26,17,7,0.88)', backdropFilter: 'blur(8px)',
+        border: '1px solid var(--border)', borderRadius: 8,
+        padding: '5px 10px', fontSize: 11, color: 'var(--text-secondary)',
       }}>
-        <span>表示: </span>
+        <span style={{ color: 'var(--text-dim)' }}>表示</span>
         {DISPLAY_LIMITS.map(n => (
           <button key={n} onClick={() => setDisplayLimit(n)} style={{
-            background: displayLimit === n ? '#3B82F6' : 'transparent',
-            border: `1px solid ${displayLimit === n ? '#3B82F6' : '#475569'}`,
+            background: displayLimit === n ? 'var(--accent)' : 'transparent',
+            border: `1px solid ${displayLimit === n ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: 4, padding: '2px 7px',
-            color: displayLimit === n ? '#fff' : '#94A3B8',
-            cursor: 'pointer', fontSize: 11, transition: 'all 0.15s',
+            color: displayLimit === n ? '#1A1107' : 'var(--text-secondary)',
+            cursor: 'pointer', fontSize: 11,
+            fontWeight: displayLimit === n ? '600' : '400',
           }}>
             {n >= 1000 ? '全件' : n}
           </button>
         ))}
-        <span style={{ color: '#475569', marginLeft: 4 }}>/ {totalCount}</span>
+        <span style={{ color: 'var(--text-dim)', marginLeft: 2 }}>/ {totalCount}</span>
       </div>
 
       <Tooltip />
@@ -353,20 +503,7 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
   )
 }
 
-function LegendItem({ color, label, dashed, dotStyle }: { color: string; label: string; dashed?: boolean; dotStyle?: React.CSSProperties }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <div style={{
-        width: dashed ? 16 : 8, height: dashed ? 0 : 8, borderRadius: dashed ? 0 : '50%',
-        background: dashed ? 'none' : color,
-        borderTop: dashed ? `2px dashed ${color}` : 'none',
-        ...dotStyle,
-      }} />
-      <span style={{ color: '#64748B', fontSize: 10 }}>{label}</span>
-    </div>
-  )
-}
-
+// ── Utilities ──────────────────────────────────────────────
 function fitView(
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
@@ -391,24 +528,24 @@ function applyHighlight(
 ) {
   nodeElems.select('.glow').attr('opacity', (d: D3Node) => d.id === selectedId ? 0.35 : 0)
   nodeElems.select('.main-circle')
-    .attr('stroke', (d: D3Node) => {
-      if (d.id === selectedId) return '#fff'
-      return d.isMainBranch ? '#93C5FD' : '#0F172A'
-    })
+    .attr('stroke', (d: D3Node) => d.id === selectedId ? '#fff' : TYPE_COLOR[d.type])
     .attr('stroke-width', (d: D3Node) => {
       if (d.id === selectedId) return 3
-      return d.isMainBranch ? 2 : 1.5
+      if (d.type === 'merge' || d.type === 'release') return 2.5
+      return d.isMainBranch ? 2.5 : 1.5
     })
 }
 
-// ===== Tooltip =====
+// ── Tooltip ────────────────────────────────────────────────
 let tooltipEl: HTMLDivElement | null = null
 function Tooltip() {
   return <div id="maze-tooltip" style={{
     position: 'fixed', pointerEvents: 'none', display: 'none',
-    background: 'rgba(15,23,42,0.96)', border: '1px solid #334155',
-    borderRadius: 8, padding: '8px 12px', zIndex: 1000, fontSize: 12, color: '#F1F5F9',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.7)', maxWidth: 320, backdropFilter: 'blur(8px)',
+    background: 'rgba(22,14,6,0.96)', border: '1px solid var(--border)',
+    borderRadius: 8, padding: '9px 13px', zIndex: 1000,
+    fontSize: 12, color: 'var(--text-primary)',
+    boxShadow: '0 6px 28px rgba(0,0,0,0.7)', maxWidth: 340,
+    backdropFilter: 'blur(10px)',
   }} />
 }
 
@@ -417,21 +554,36 @@ function getTooltipEl() {
   return tooltipEl!
 }
 
+const TYPE_LABEL: Record<CommitType, string> = {
+  normal: '通常', feature: '機能追加', error_fix: 'バグ修正',
+  revert: 'リバート', merge: 'マージ', wip: 'WIP', release: 'リリース',
+}
+
 function showTooltip(event: MouseEvent, d: D3Node) {
   const el = getTooltipEl()
-  const date = new Date(d.timestamp).toLocaleDateString('ja-JP')
-  const mainBadge = d.isMainBranch ? `<span style="background:#1D4ED8;color:#93C5FD;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px">MAIN</span>` : ''
+  const date = new Date(d.timestamp).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })
+  const color = TYPE_COLOR[d.type]
+
+  const tags = d.tagNames.map(t =>
+    `<span style="background:rgba(212,168,74,0.15);color:#D4A84A;padding:1px 6px;border-radius:3px;font-size:10px;border:1px solid rgba(212,168,74,0.3)">${t}</span>`
+  ).join(' ')
+
+  const branches = d.branchNames.slice(0, 2).map(b =>
+    `<span style="background:rgba(100,100,100,0.2);color:var(--text-secondary);padding:1px 6px;border-radius:3px;font-size:10px">${b}</span>`
+  ).join(' ')
+
   el.innerHTML = `
-    <div style="display:flex;align-items:center;margin-bottom:5px">
-      <span style="font-weight:600;font-family:monospace;color:${TYPE_COLOR[d.type]}">${d.label}</span>
-      ${mainBadge}
-      ${d.tagNames.length ? `<span style="background:#78350F;color:#F59E0B;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:4px">🏷 ${d.tagNames[0]}</span>` : ''}
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+      <span style="font-weight:700;font-family:monospace;color:${color};font-size:11px">${d.label}</span>
+      <span style="background:${color}22;color:${color};padding:1px 6px;border-radius:3px;font-size:10px;border:1px solid ${color}44">${TYPE_LABEL[d.type]}</span>
+      ${tags}
     </div>
-    <div style="color:#CBD5E1;margin-bottom:6px;line-height:1.45">${d.message.slice(0, 90)}${d.message.length > 90 ? '…' : ''}</div>
-    <div style="display:flex;gap:10px;font-size:11px;color:#64748B">
-      <span>👤 ${d.authorName}</span>
-      <span>📅 ${date}</span>
-      ${d.filesChanged > 0 ? `<span>📝 ${d.filesChanged}f</span>` : ''}
+    <div style="color:var(--text-primary);margin-bottom:7px;line-height:1.5;font-size:12px">${d.message.split('\n')[0].slice(0, 100)}${d.message.length > 100 ? '…' : ''}</div>
+    ${branches ? `<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">${branches}</div>` : ''}
+    <div style="display:flex;gap:12px;font-size:10px;color:var(--text-dim)">
+      <span>${d.authorName}</span>
+      <span>${date}</span>
+      ${d.filesChanged > 0 ? `<span>+${d.insertions} -${d.deletions}</span>` : ''}
     </div>
   `
   el.style.display = 'block'
@@ -440,9 +592,9 @@ function showTooltip(event: MouseEvent, d: D3Node) {
 
 function moveTooltip(event: MouseEvent) {
   const el = getTooltipEl()
-  const x = event.clientX + 14, w = el.offsetWidth, vw = window.innerWidth
-  el.style.left = (x + w > vw ? event.clientX - w - 14 : x) + 'px'
-  el.style.top = (event.clientY - 8) + 'px'
+  const x = event.clientX + 16, w = el.offsetWidth, vw = window.innerWidth
+  el.style.left = (x + w > vw ? event.clientX - w - 16 : x) + 'px'
+  el.style.top  = (event.clientY - 10) + 'px'
 }
 
 function hideTooltip() {
