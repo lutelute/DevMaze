@@ -1,31 +1,17 @@
 <svg width="1024" height="1024" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background matching app theme -->
+  <!-- App icon background -->
   <rect width="24" height="24" rx="5.2" fill="#1A1107"/>
 
-  <!-- MazeLogo: same paths as Icons.tsx MazeLogo, stroke-width scaled for 1024px output -->
-  <!-- stroke-width 0.48 → ~20px at 1024 render -->
-
-  <!-- Outer border -->
-  <rect x="1" y="1" width="22" height="22" rx="3.5"
-        stroke="#D4A84A" stroke-width="0.48" fill="none"/>
-
-  <!-- col2 vertical: top → row1 bottom -->
-  <line x1="9" y1="1"  x2="9"  y2="9"
-        stroke="#D4A84A" stroke-width="0.48" stroke-linecap="square"/>
-
-  <!-- row1 horizontal: col2 → right -->
-  <line x1="9"  y1="9"  x2="23" y2="9"
-        stroke="#D4A84A" stroke-width="0.48" stroke-linecap="square"/>
-
-  <!-- row2 horizontal: left → col3 -->
-  <line x1="1"  y1="15" x2="15" y2="15"
-        stroke="#D4A84A" stroke-width="0.48" stroke-linecap="square"/>
-
-  <!-- col3 vertical: row1 → row2 -->
-  <line x1="15" y1="9"  x2="15" y2="15"
-        stroke="#D4A84A" stroke-width="0.48" stroke-linecap="square"/>
-
-  <!-- col3 vertical: row2 → bottom -->
-  <line x1="15" y1="15" x2="15" y2="23"
-        stroke="#D4A84A" stroke-width="0.48" stroke-linecap="square"/>
+  <!-- Maze mark: centered, ~58% of icon size, with ~21% padding each side -->
+  <!-- translate(4.9, 4.9) scale(0.59): inner maze 13px in 24px canvas -->
+  <g transform="translate(4.9, 4.9) scale(0.59)">
+    <!-- stroke-width compensated for scale: 0.48/0.59 ≈ 0.81 -->
+    <rect x="1" y="1" width="22" height="22" rx="3.5"
+          stroke="#D4A84A" stroke-width="0.81" fill="none"/>
+    <line x1="9" y1="1"  x2="9"  y2="9"  stroke="#D4A84A" stroke-width="0.81" stroke-linecap="square"/>
+    <line x1="9"  y1="9"  x2="23" y2="9"  stroke="#D4A84A" stroke-width="0.81" stroke-linecap="square"/>
+    <line x1="1"  y1="15" x2="15" y2="15" stroke="#D4A84A" stroke-width="0.81" stroke-linecap="square"/>
+    <line x1="15" y1="9"  x2="15" y2="15" stroke="#D4A84A" stroke-width="0.81" stroke-linecap="square"/>
+    <line x1="15" y1="15" x2="15" y2="23" stroke="#D4A84A" stroke-width="0.81" stroke-linecap="square"/>
+  </g>
 </svg>
