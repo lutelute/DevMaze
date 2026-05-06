@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { MazeLogo, GitHubIcon, FolderIcon, RefreshIcon } from './Icons'
 
 interface Props {
   repoName?: string
@@ -105,7 +106,7 @@ export default function Header({
         display: 'flex', alignItems: 'center', gap: 7,
         WebkitAppRegion: 'no-drag', flexShrink: 0,
       } as React.CSSProperties}>
-        <span style={{ fontSize: 16, lineHeight: 1 }}>🌀</span>
+        <MazeLogo size={18} />
         <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: '-0.2px', color: 'var(--text-primary)' }}>
           DevMaze
         </span>
@@ -152,10 +153,7 @@ export default function Header({
         {/* ↺ 強制再スキャン（リポジトリ表示中のみ） */}
         {repoName && onRefresh && (
           <IconBtn onClick={onRefresh} title="再スキャン">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M13.5 8A5.5 5.5 0 1 1 10 3.08"/>
-              <path d="M10 1v3h3"/>
-            </svg>
+            <RefreshIcon size={14} color="currentColor" />
           </IconBtn>
         )}
 
@@ -166,13 +164,8 @@ export default function Header({
 
         {/* 🐙 GitHub */}
         <div ref={githubRef} style={{ position: 'relative' }}>
-          <TextBtn
-            onClick={() => setShowGithub(v => !v)}
-            active={showGithub}
-          >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-            </svg>
+          <TextBtn onClick={() => setShowGithub(v => !v)} active={showGithub}>
+            <GitHubIcon size={13} color="currentColor" />
             GitHub
           </TextBtn>
 
@@ -233,7 +226,7 @@ export default function Header({
         {/* セパレーター */}
         <div style={{ width: 1, height: 14, background: 'var(--border)', margin: '0 4px' }} />
 
-        {/* 📂 開く（ローカル） */}
+        {/* 開く（ローカル） */}
         <button
           onClick={onOpenRepo}
           style={{
@@ -244,9 +237,7 @@ export default function Header({
             cursor: 'pointer', letterSpacing: '-0.1px',
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 4.5A1.5 1.5 0 0 1 2.5 3h3l2 2h6A1.5 1.5 0 0 1 15 6.5v6A1.5 1.5 0 0 1 13.5 14h-11A1.5 1.5 0 0 1 1 12.5v-8z"/>
-          </svg>
+          <FolderIcon size={12} color="#1A1107" />
           開く
         </button>
       </div>
