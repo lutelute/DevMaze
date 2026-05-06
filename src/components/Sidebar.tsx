@@ -9,13 +9,13 @@ interface Props {
 }
 
 const TYPE_META: Record<CommitType, { label: string; color: string; emoji: string }> = {
-  normal:    { label: '通常',     color: '#3B82F6', emoji: '●' },
-  feature:   { label: '機能追加', color: '#10B981', emoji: '●' },
-  error_fix: { label: 'バグ修正', color: '#EF4444', emoji: '●' },
-  revert:    { label: 'リバート', color: '#F97316', emoji: '●' },
-  merge:     { label: 'マージ',   color: '#A855F7', emoji: '●' },
-  wip:       { label: 'WIP',      color: '#F59E0B', emoji: '●' },
-  release:   { label: 'リリース', color: '#6B7280', emoji: '●' },
+  normal:    { label: '通常',     color: '#D4A84A', emoji: '●' },
+  feature:   { label: '機能追加', color: '#7B9E5A', emoji: '●' },
+  error_fix: { label: 'バグ修正', color: '#C0624B', emoji: '●' },
+  revert:    { label: 'リバート', color: '#C88B3A', emoji: '●' },
+  merge:     { label: 'マージ',   color: '#8B7355', emoji: '●' },
+  wip:       { label: 'WIP',      color: '#B8A06A', emoji: '●' },
+  release:   { label: 'リリース', color: '#9B8570', emoji: '●' },
 }
 
 export default function Sidebar({ result, filterTypes, onFilterChange }: Props) {

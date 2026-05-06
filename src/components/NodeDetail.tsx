@@ -6,13 +6,13 @@ interface Props {
 }
 
 const TYPE_LABELS: Record<CommitType, { label: string; color: string }> = {
-  normal:    { label: '通常コミット', color: '#3B82F6' },
-  feature:   { label: '機能追加',     color: '#10B981' },
-  error_fix: { label: 'バグ修正',     color: '#EF4444' },
-  revert:    { label: 'リバート',     color: '#F97316' },
-  merge:     { label: 'マージ',       color: '#A855F7' },
-  wip:       { label: 'WIP',          color: '#F59E0B' },
-  release:   { label: 'リリース',     color: '#6B7280' },
+  normal:    { label: '通常コミット', color: '#D4A84A' },
+  feature:   { label: '機能追加',     color: '#7B9E5A' },
+  error_fix: { label: 'バグ修正',     color: '#C0624B' },
+  revert:    { label: 'リバート',     color: '#C88B3A' },
+  merge:     { label: 'マージ',       color: '#8B7355' },
+  wip:       { label: 'WIP',          color: '#B8A06A' },
+  release:   { label: 'リリース',     color: '#9B8570' },
 }
 
 export default function NodeDetail({ node, onClose }: Props) {

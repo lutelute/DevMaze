@@ -1,0 +1,113 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="mainLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1D4ED8" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#60A5FA" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <clipPath id="roundedRect">
+      <rect width="1024" height="1024" rx="200" ry="200"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="200" fill="url(#bgGrad)"/>
+
+  <!-- Subtle dot grid -->
+  <g opacity="0.06">
+    <g fill="#3B82F6">
+      <circle cx="170" cy="340" r="3"/><circle cx="280" cy="340" r="3"/><circle cx="390" cy="340" r="3"/>
+      <circle cx="500" cy="340" r="3"/><circle cx="610" cy="340" r="3"/><circle cx="720" cy="340" r="3"/><circle cx="830" cy="340" r="3"/>
+      <circle cx="170" cy="460" r="3"/><circle cx="280" cy="460" r="3"/><circle cx="390" cy="460" r="3"/>
+      <circle cx="500" cy="460" r="3"/><circle cx="610" cy="460" r="3"/><circle cx="720" cy="460" r="3"/><circle cx="830" cy="460" r="3"/>
+      <circle cx="170" cy="580" r="3"/><circle cx="280" cy="580" r="3"/><circle cx="390" cy="580" r="3"/>
+      <circle cx="500" cy="580" r="3"/><circle cx="610" cy="580" r="3"/><circle cx="720" cy="580" r="3"/><circle cx="830" cy="580" r="3"/>
+      <circle cx="170" cy="700" r="3"/><circle cx="280" cy="700" r="3"/><circle cx="390" cy="700" r="3"/>
+      <circle cx="500" cy="700" r="3"/><circle cx="610" cy="700" r="3"/><circle cx="720" cy="700" r="3"/><circle cx="830" cy="700" r="3"/>
+    </g>
+  </g>
+
+  <!-- ===== GRAPH VISUALIZATION ===== -->
+  <!-- Clip to rounded rect -->
+  <g clip-path="url(#roundedRect)">
+
+  <!-- Main branch spine line -->
+  <line x1="130" y1="512" x2="894" y2="512"
+        stroke="url(#mainLine)" stroke-width="7" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Feature branch: upper arc 1 (green) -->
+  <path d="M 290 512 Q 370 340 450 512"
+        stroke="#10B981" stroke-width="5" fill="none" opacity="0.75" stroke-linecap="round"/>
+
+  <!-- Feature branch: upper arc 2 (purple) - merge PR  -->
+  <path d="M 520 512 Q 620 280 740 512"
+        stroke="#A855F7" stroke-width="5" fill="none" opacity="0.75" stroke-linecap="round"/>
+
+  <!-- Feature branch: lower arc 1 (amber - WIP) -->
+  <path d="M 360 512 Q 430 680 510 512"
+        stroke="#F59E0B" stroke-width="4" fill="none" opacity="0.7" stroke-linecap="round"/>
+
+  <!-- Feature branch: lower arc 2 (red - fix) -->
+  <path d="M 640 512 Q 720 720 810 512"
+        stroke="#EF4444" stroke-width="4" fill="none" opacity="0.65" stroke-linecap="round"/>
+
+  <!-- Revert arrow (orange dashed) -->
+  <path d="M 480 512 Q 420 420 360 512"
+        stroke="#F97316" stroke-width="3" fill="none" opacity="0.5"
+        stroke-dasharray="12,8" stroke-linecap="round"/>
+
+  <!-- ===== NODES ===== -->
+
+  <!-- Main branch nodes — blue, glowing -->
+  <circle cx="180" cy="512" r="26" fill="url(#nodeGrad)" filter="url(#glow)"/>
+  <circle cx="290" cy="512" r="22" fill="#3B82F6" filter="url(#softglow)"/>
+  <circle cx="450" cy="512" r="22" fill="#3B82F6" filter="url(#softglow)"/>
+  <circle cx="520" cy="512" r="20" fill="#3B82F6" filter="url(#softglow)"/>
+  <circle cx="640" cy="512" r="22" fill="#3B82F6" filter="url(#softglow)"/>
+  <circle cx="740" cy="512" r="22" fill="#3B82F6" filter="url(#softglow)"/>
+  <circle cx="850" cy="512" r="26" fill="url(#nodeGrad)" filter="url(#glow)"/>
+
+  <!-- Feature branch top nodes -->
+  <circle cx="370" cy="340" r="18" fill="#10B981" filter="url(#softglow)" opacity="0.9"/>
+  <circle cx="620" cy="280" r="17" fill="#A855F7" filter="url(#softglow)" opacity="0.9"/>
+  <circle cx="680" cy="280" r="14" fill="#A855F7" opacity="0.7"/>
+
+  <!-- Feature branch bottom nodes -->
+  <circle cx="430" cy="680" r="17" fill="#F59E0B" filter="url(#softglow)" opacity="0.85"/>
+  <circle cx="725" cy="718" r="16" fill="#EF4444" filter="url(#softglow)" opacity="0.8"/>
+
+  <!-- Revert node -->
+  <circle cx="410" cy="430" r="14" fill="#F97316" opacity="0.75"/>
+
+  <!-- Center highlight ring -->
+  <circle cx="512" cy="512" r="220" fill="none" stroke="#3B82F6" stroke-width="1.5" opacity="0.07"/>
+  <circle cx="512" cy="512" r="160" fill="none" stroke="#3B82F6" stroke-width="1" opacity="0.05"/>
+
+  <!-- Node inner highlights -->
+  <circle cx="178" cy="508" r="10" fill="#93C5FD" opacity="0.5"/>
+  <circle cx="848" cy="508" r="10" fill="#93C5FD" opacity="0.5"/>
+
+  </g><!-- end clip -->
+
+  <!-- Border inner glow -->
+  <rect width="1024" height="1024" rx="200"
+        fill="none" stroke="#3B82F6" stroke-width="3" opacity="0.12"/>
+</svg>

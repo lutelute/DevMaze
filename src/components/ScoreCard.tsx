@@ -3,10 +3,10 @@ import type { TrialScore } from '../../shared/types'
 interface Props { score: TrialScore }
 
 const LEVEL_CONFIG = {
-  clean:   { label: 'クリーン',   color: '#10B981', bar: '#10B981' },
-  normal:  { label: '通常',       color: '#3B82F6', bar: '#3B82F6' },
-  messy:   { label: '混沌',       color: '#F97316', bar: '#F97316' },
-  chaotic: { label: '超混沌',     color: '#EF4444', bar: '#EF4444' },
+  clean:   { label: 'クリーン',   color: '#7B9E5A', bar: '#7B9E5A' },
+  normal:  { label: '通常',       color: '#D4A84A', bar: '#D4A84A' },
+  messy:   { label: '混沌',       color: '#C88B3A', bar: '#C88B3A' },
+  chaotic: { label: '超混沌',     color: '#C0624B', bar: '#C0624B' },
 }
 
 export default function ScoreCard({ score }: Props) {

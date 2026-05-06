@@ -1,0 +1,83 @@
+<!-- 候補A: Deep Espresso — ダークコーヒー背景 + ゴールド -->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A1108"/>
+      <stop offset="100%" stop-color="#2D1E0F"/>
+    </linearGradient>
+    <linearGradient id="mainLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8B6530" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#C4954A" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8C885"/>
+      <stop offset="100%" stop-color="#C4954A"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="clip"><rect width="1024" height="1024" rx="200"/></clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" rx="200" fill="url(#bg)"/>
+
+  <!-- Subtle warm grid -->
+  <g opacity="0.05" fill="#C4954A">
+    <circle cx="170" cy="340" r="3"/><circle cx="280" cy="340" r="3"/><circle cx="390" cy="340" r="3"/>
+    <circle cx="500" cy="340" r="3"/><circle cx="610" cy="340" r="3"/><circle cx="720" cy="340" r="3"/><circle cx="830" cy="340" r="3"/>
+    <circle cx="170" cy="460" r="3"/><circle cx="280" cy="460" r="3"/><circle cx="390" cy="460" r="3"/>
+    <circle cx="500" cy="460" r="3"/><circle cx="610" cy="460" r="3"/><circle cx="720" cy="460" r="3"/><circle cx="830" cy="460" r="3"/>
+    <circle cx="170" cy="580" r="3"/><circle cx="280" cy="580" r="3"/><circle cx="390" cy="580" r="3"/>
+    <circle cx="500" cy="580" r="3"/><circle cx="610" cy="580" r="3"/><circle cx="720" cy="580" r="3"/><circle cx="830" cy="580" r="3"/>
+    <circle cx="170" cy="700" r="3"/><circle cx="280" cy="700" r="3"/><circle cx="390" cy="700" r="3"/>
+    <circle cx="500" cy="700" r="3"/><circle cx="610" cy="700" r="3"/><circle cx="720" cy="700" r="3"/><circle cx="830" cy="700" r="3"/>
+  </g>
+
+  <g clip-path="url(#clip)">
+    <!-- Main spine -->
+    <line x1="130" y1="512" x2="894" y2="512"
+          stroke="url(#mainLine)" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+
+    <!-- Branch arcs -->
+    <path d="M 290 512 Q 370 340 450 512" stroke="#7B9E5A" stroke-width="5" fill="none" opacity="0.75" stroke-linecap="round"/>
+    <path d="M 520 512 Q 620 280 740 512" stroke="#8B7355" stroke-width="5" fill="none" opacity="0.7" stroke-linecap="round"/>
+    <path d="M 360 512 Q 430 680 510 512" stroke="#B8A06A" stroke-width="4" fill="none" opacity="0.65" stroke-linecap="round"/>
+    <path d="M 640 512 Q 720 720 810 512" stroke="#C0624B" stroke-width="4" fill="none" opacity="0.6" stroke-linecap="round"/>
+    <!-- Revert -->
+    <path d="M 480 512 Q 420 420 360 512"
+          stroke="#C88B3A" stroke-width="3" fill="none" opacity="0.55"
+          stroke-dasharray="12,8" stroke-linecap="round"/>
+
+    <!-- Main nodes -->
+    <circle cx="180" cy="512" r="28" fill="url(#nodeGrad)" filter="url(#glow)"/>
+    <circle cx="290" cy="512" r="22" fill="#C4954A" filter="url(#softglow)"/>
+    <circle cx="450" cy="512" r="22" fill="#C4954A" filter="url(#softglow)"/>
+    <circle cx="520" cy="512" r="20" fill="#C4954A" filter="url(#softglow)"/>
+    <circle cx="640" cy="512" r="22" fill="#C4954A" filter="url(#softglow)"/>
+    <circle cx="740" cy="512" r="22" fill="#C4954A" filter="url(#softglow)"/>
+    <circle cx="850" cy="512" r="28" fill="url(#nodeGrad)" filter="url(#glow)"/>
+
+    <!-- Feature nodes -->
+    <circle cx="370" cy="340" r="18" fill="#7B9E5A" filter="url(#softglow)" opacity="0.9"/>
+    <circle cx="620" cy="280" r="17" fill="#8B7355" filter="url(#softglow)" opacity="0.85"/>
+    <circle cx="680" cy="280" r="13" fill="#8B7355" opacity="0.65"/>
+    <circle cx="430" cy="680" r="17" fill="#B8A06A" filter="url(#softglow)" opacity="0.85"/>
+    <circle cx="725" cy="718" r="16" fill="#C0624B" filter="url(#softglow)" opacity="0.8"/>
+    <circle cx="410" cy="430" r="13" fill="#C88B3A" opacity="0.72"/>
+
+    <!-- Inner highlights -->
+    <circle cx="178" cy="507" r="11" fill="#F5EDD8" opacity="0.35"/>
+    <circle cx="848" cy="507" r="11" fill="#F5EDD8" opacity="0.35"/>
+
+    <!-- Concentric rings -->
+    <circle cx="512" cy="512" r="220" fill="none" stroke="#C4954A" stroke-width="1.5" opacity="0.07"/>
+    <circle cx="512" cy="512" r="155" fill="none" stroke="#C4954A" stroke-width="1" opacity="0.05"/>
+  </g>
+
+  <rect width="1024" height="1024" rx="200" fill="none" stroke="#C4954A" stroke-width="2.5" opacity="0.12"/>
+</svg>

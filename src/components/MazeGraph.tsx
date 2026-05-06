@@ -13,19 +13,19 @@ type D3Node = MazeNode & d3.SimulationNodeDatum
 type D3Link = { id: string; source: D3Node; target: D3Node; type: MazeEdge['type'] }
 
 const TYPE_COLOR: Record<CommitType, string> = {
-  normal:    '#3B82F6',
-  feature:   '#10B981',
-  error_fix: '#EF4444',
-  revert:    '#F97316',
-  merge:     '#A855F7',
-  wip:       '#F59E0B',
-  release:   '#22D3EE',
+  normal:    '#D4A84A',
+  feature:   '#7B9E5A',
+  error_fix: '#C0624B',
+  revert:    '#C88B3A',
+  merge:     '#8B7355',
+  wip:       '#B8A06A',
+  release:   '#9B8570',
 }
 
 const EDGE_COLOR: Record<MazeEdge['type'], string> = {
-  parent:       '#475569',
-  merge_parent: '#8B5CF6',
-  revert_of:    '#F97316',
+  parent:       '#4A3018',
+  merge_parent: '#7A6040',
+  revert_of:    '#C88B3A',
 }
 
 const EDGE_DASH: Record<MazeEdge['type'], string> = {
@@ -112,7 +112,7 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         .attr('opacity', type === 'parent' ? 0.5 : 0.85)
     })
 
-    svg.style('background', '#0F172A')
+    svg.style('background', '#1A1107')
     const g = svg.append('g').attr('class', 'zoom-layer')
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -147,17 +147,17 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         .attr('y1', 0)
         .attr('x2', xPos(mainNodes[mainNodes.length - 1].timestamp))
         .attr('y2', 0)
-        .attr('stroke', '#1E3A5F')
+        .attr('stroke', '#3D2810')
         .attr('stroke-width', 3)
         .attr('stroke-dasharray', '8,4')
-        .attr('opacity', 0.6)
+        .attr('opacity', 0.7)
 
       // "MAIN" label
       g.append('text')
         .attr('class', 'spine-label')
         .attr('x', xPos(mainNodes[0].timestamp) - 20)
         .attr('y', -14)
-        .attr('fill', '#3B82F640')
+        .attr('fill', '#D4A84A40')
         .attr('font-size', 10)
         .attr('font-family', 'JetBrains Mono, monospace')
         .attr('font-weight', '600')
@@ -216,7 +216,7 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       .attr('class', 'main-circle')
       .attr('r', d => nodeRadius(d))
       .attr('fill', d => TYPE_COLOR[d.type])
-      .attr('stroke', d => d.isMainBranch ? '#93C5FD' : '#0F172A')
+      .attr('stroke', d => d.isMainBranch ? '#EDD090' : '#1A1107')
       .attr('stroke-width', d => d.isMainBranch ? 2 : 1.5)
       .attr('filter', d => d.isMainBranch ? 'url(#glow)' : 'none')
 
@@ -235,7 +235,7 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       .attr('class', 'label')
       .attr('dy', d => nodeRadius(d) + 11)
       .attr('text-anchor', 'middle')
-      .attr('fill', d => d.isMainBranch ? '#93C5FD80' : '#47556980')
+      .attr('fill', d => d.isMainBranch ? '#EDD09080' : '#6B503580')
       .attr('font-size', 8)
       .attr('font-family', 'JetBrains Mono, monospace')
       .attr('pointer-events', 'none')

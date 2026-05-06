@@ -1,0 +1,88 @@
+<!-- 候補B: Sand Desert — 砂漠の砂 + 夕焼け -->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#241A0C"/>
+      <stop offset="100%" stop-color="#3B2810"/>
+    </linearGradient>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#4A3318" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mainLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#9E7B45" stop-opacity="0.5"/>
+      <stop offset="50%" stop-color="#E8B86D" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#9E7B45" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5D68A"/>
+      <stop offset="100%" stop-color="#D4923C"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="clip"><rect width="1024" height="1024" rx="200"/></clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" rx="200" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="200" fill="url(#bgGlow)"/>
+
+  <!-- Sand texture stripes (subtle) -->
+  <g opacity="0.03" stroke="#E8B86D" stroke-width="1">
+    <line x1="0" y1="200" x2="1024" y2="200"/>
+    <line x1="0" y1="400" x2="1024" y2="400"/>
+    <line x1="0" y1="600" x2="1024" y2="600"/>
+    <line x1="0" y1="800" x2="1024" y2="800"/>
+  </g>
+
+  <g clip-path="url(#clip)">
+    <!-- Warm haze in center -->
+    <circle cx="512" cy="512" r="350" fill="#E8B86D" opacity="0.04"/>
+
+    <!-- Main spine (golden) -->
+    <line x1="120" y1="512" x2="904" y2="512"
+          stroke="url(#mainLine)" stroke-width="8" stroke-linecap="round"/>
+
+    <!-- Branch arcs - earthy tones -->
+    <path d="M 280 512 Q 360 320 450 512" stroke="#A0845A" stroke-width="5.5" fill="none" opacity="0.8" stroke-linecap="round"/>
+    <path d="M 510 512 Q 610 240 740 512" stroke="#7A6048" stroke-width="5.5" fill="none" opacity="0.75" stroke-linecap="round"/>
+    <path d="M 350 512 Q 420 700 510 512" stroke="#C49A6C" stroke-width="4.5" fill="none" opacity="0.7" stroke-linecap="round"/>
+    <path d="M 630 512 Q 710 740 810 512" stroke="#B8755A" stroke-width="4.5" fill="none" opacity="0.65" stroke-linecap="round"/>
+    <!-- Revert dashed -->
+    <path d="M 475 512 Q 415 410 350 512"
+          stroke="#D4923C" stroke-width="3.5" fill="none" opacity="0.6"
+          stroke-dasharray="14,9" stroke-linecap="round"/>
+
+    <!-- Main branch nodes (warm gold glow) -->
+    <circle cx="175" cy="512" r="30" fill="url(#nodeGrad)" filter="url(#glow)"/>
+    <circle cx="280" cy="512" r="23" fill="#E8B86D" filter="url(#softglow)"/>
+    <circle cx="450" cy="512" r="23" fill="#E8B86D" filter="url(#softglow)"/>
+    <circle cx="510" cy="512" r="21" fill="#E8B86D" filter="url(#softglow)"/>
+    <circle cx="630" cy="512" r="23" fill="#E8B86D" filter="url(#softglow)"/>
+    <circle cx="740" cy="512" r="23" fill="#E8B86D" filter="url(#softglow)"/>
+    <circle cx="850" cy="512" r="30" fill="url(#nodeGrad)" filter="url(#glow)"/>
+
+    <!-- Feature nodes -->
+    <circle cx="360" cy="320" r="19" fill="#A0845A" filter="url(#softglow)" opacity="0.9"/>
+    <circle cx="610" cy="240" r="18" fill="#7A6048" filter="url(#softglow)" opacity="0.85"/>
+    <circle cx="670" cy="240" r="14" fill="#7A6048" opacity="0.65"/>
+    <circle cx="420" cy="700" r="18" fill="#C49A6C" filter="url(#softglow)" opacity="0.85"/>
+    <circle cx="718" cy="738" r="17" fill="#B8755A" filter="url(#softglow)" opacity="0.8"/>
+    <circle cx="400" cy="420" r="14" fill="#D4923C" opacity="0.75"/>
+
+    <!-- Inner shine on main nodes -->
+    <circle cx="172" cy="505" r="12" fill="#FFF8E8" opacity="0.3"/>
+    <circle cx="847" cy="505" r="12" fill="#FFF8E8" opacity="0.3"/>
+
+    <!-- Orbit rings -->
+    <circle cx="512" cy="512" r="230" fill="none" stroke="#E8B86D" stroke-width="1.5" opacity="0.06"/>
+    <circle cx="512" cy="512" r="165" fill="none" stroke="#E8B86D" stroke-width="1" opacity="0.04"/>
+  </g>
+
+  <rect width="1024" height="1024" rx="200" fill="none" stroke="#E8B86D" stroke-width="2" opacity="0.1"/>
+</svg>

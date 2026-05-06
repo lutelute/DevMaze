@@ -31,7 +31,7 @@ export default function WelcomeScreen({ onOpen, recentRepos, onOpenRecent }: Pro
       {/* Open button */}
       <button onClick={onOpen} style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        background: 'var(--accent)', color: '#fff', border: 'none',
+        background: 'var(--accent)', color: '#1A1107', border: 'none',
         padding: '12px 28px', borderRadius: 8, cursor: 'pointer',
         fontWeight: 600, fontSize: 15, letterSpacing: '0.2px',
         transition: 'opacity 0.15s',

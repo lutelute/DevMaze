@@ -1,0 +1,102 @@
+<!-- 候補C: Parchment — 羊皮紙/地図 テイスト（薄めの温かみ） -->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2C1F0E"/>
+      <stop offset="50%" stop-color="#3D2A12"/>
+      <stop offset="100%" stop-color="#251A09"/>
+    </linearGradient>
+    <radialGradient id="center" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#56380F" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#56380F" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mainLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#A07840" stop-opacity="0.6"/>
+      <stop offset="40%" stop-color="#D4A862" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#A07840" stop-opacity="0.6"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EDD090"/>
+      <stop offset="100%" stop-color="#B8843C"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="clip"><rect width="1024" height="1024" rx="180"/></clipPath>
+  </defs>
+
+  <!-- Slightly less rounded — more "book/map" feel -->
+  <rect width="1024" height="1024" rx="180" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="180" fill="url(#center)"/>
+
+  <!-- Corner vignette dots (map/parchment feel) -->
+  <g opacity="0.06" fill="#D4A862">
+    <circle cx="100" cy="100" r="40"/><circle cx="924" cy="100" r="40"/>
+    <circle cx="100" cy="924" r="40"/><circle cx="924" cy="924" r="40"/>
+  </g>
+
+  <!-- Fine cross-hatch lines (map texture) -->
+  <g opacity="0.035" stroke="#D4A862" stroke-width="0.8">
+    <line x1="200" y1="150" x2="200" y2="874"/><line x1="350" y1="150" x2="350" y2="874"/>
+    <line x1="500" y1="150" x2="500" y2="874"/><line x1="650" y1="150" x2="650" y2="874"/>
+    <line x1="800" y1="150" x2="800" y2="874"/>
+    <line x1="150" y1="250" x2="874" y2="250"/><line x1="150" y1="400" x2="874" y2="400"/>
+    <line x1="150" y1="550" x2="874" y2="550"/><line x1="150" y1="700" x2="874" y2="700"/>
+  </g>
+
+  <g clip-path="url(#clip)">
+    <!-- Subtle warm center glow -->
+    <circle cx="512" cy="512" r="300" fill="#D4A862" opacity="0.03"/>
+
+    <!-- Main spine -->
+    <line x1="125" y1="512" x2="899" y2="512"
+          stroke="url(#mainLine)" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- Branch arcs - warm browns and tans -->
+    <path d="M 285 512 Q 365 330 448 512" stroke="#8C6A3C" stroke-width="5" fill="none" opacity="0.8" stroke-linecap="round"/>
+    <path d="M 515 512 Q 615 260 738 512" stroke="#6B5230" stroke-width="5" fill="none" opacity="0.75" stroke-linecap="round"/>
+    <path d="M 355 512 Q 425 695 512 512" stroke="#AD8D5E" stroke-width="4" fill="none" opacity="0.7" stroke-linecap="round"/>
+    <path d="M 635 512 Q 712 735 808 512" stroke="#9E6248" stroke-width="4" fill="none" opacity="0.65" stroke-linecap="round"/>
+    <!-- Revert -->
+    <path d="M 478 512 Q 418 408 355 512"
+          stroke="#C48030" stroke-width="3" fill="none" opacity="0.55"
+          stroke-dasharray="13,8" stroke-linecap="round"/>
+
+    <!-- Main branch nodes (warm golden) -->
+    <circle cx="178" cy="512" r="29" fill="url(#nodeGrad)" filter="url(#glow)"/>
+    <circle cx="285" cy="512" r="22" fill="#D4A862" filter="url(#softglow)"/>
+    <circle cx="448" cy="512" r="22" fill="#D4A862" filter="url(#softglow)"/>
+    <circle cx="515" cy="512" r="20" fill="#D4A862" filter="url(#softglow)"/>
+    <circle cx="635" cy="512" r="22" fill="#D4A862" filter="url(#softglow)"/>
+    <circle cx="738" cy="512" r="22" fill="#D4A862" filter="url(#softglow)"/>
+    <circle cx="848" cy="512" r="29" fill="url(#nodeGrad)" filter="url(#glow)"/>
+
+    <!-- Feature nodes -->
+    <circle cx="365" cy="330" r="18" fill="#8C6A3C" filter="url(#softglow)" opacity="0.9"/>
+    <circle cx="615" cy="260" r="17" fill="#6B5230" filter="url(#softglow)" opacity="0.85"/>
+    <circle cx="675" cy="260" r="13" fill="#6B5230" opacity="0.65"/>
+    <circle cx="425" cy="695" r="17" fill="#AD8D5E" filter="url(#softglow)" opacity="0.85"/>
+    <circle cx="713" cy="734" r="16" fill="#9E6248" filter="url(#softglow)" opacity="0.8"/>
+    <circle cx="405" cy="422" r="13" fill="#C48030" opacity="0.72"/>
+
+    <!-- Sheen on largest nodes -->
+    <circle cx="175" cy="505" r="11" fill="#FFF5E0" opacity="0.28"/>
+    <circle cx="845" cy="505" r="11" fill="#FFF5E0" opacity="0.28"/>
+
+    <!-- Map compass rose (subtle, center) -->
+    <circle cx="512" cy="512" r="220" fill="none" stroke="#D4A862" stroke-width="1.5" opacity="0.07"/>
+    <circle cx="512" cy="512" r="158" fill="none" stroke="#D4A862" stroke-width="1" opacity="0.05"/>
+    <!-- Cross lines for compass -->
+    <line x1="512" y1="292" x2="512" y2="732" stroke="#D4A862" stroke-width="0.8" opacity="0.04"/>
+    <line x1="292" y1="512" x2="732" y2="512" stroke="#D4A862" stroke-width="0.8" opacity="0.04"/>
+  </g>
+
+  <!-- Frame border (map/book feel) -->
+  <rect width="1024" height="1024" rx="180" fill="none" stroke="#D4A862" stroke-width="3" opacity="0.09"/>
+  <rect x="16" y="16" width="992" height="992" rx="168" fill="none" stroke="#D4A862" stroke-width="1" opacity="0.05"/>
+</svg>

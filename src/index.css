@@ -7,25 +7,25 @@
 }
 
 :root {
-  --bg-base:    #0F172A;
-  --bg-panel:   #1E293B;
-  --bg-hover:   #334155;
-  --border:     #334155;
-  --border-dim: #1E293B;
-  --text-primary:   #F1F5F9;
-  --text-secondary: #94A3B8;
-  --text-dim:       #475569;
-  --accent:     #3B82F6;
-  --accent-dim: #1D4ED8;
+  --bg-base:    #1A1107;
+  --bg-panel:   #231609;
+  --bg-hover:   #352210;
+  --border:     #3D2810;
+  --border-dim: #2A1A08;
+  --text-primary:   #F2E8D0;
+  --text-secondary: #A89060;
+  --text-dim:       #6B5035;
+  --accent:     #D4A84A;
+  --accent-dim: #9E7830;
 
-  /* Commit type colors */
-  --color-normal:    #3B82F6;
-  --color-error-fix: #EF4444;
-  --color-revert:    #F97316;
-  --color-merge:     #A855F7;
-  --color-wip:       #F59E0B;
-  --color-feature:   #10B981;
-  --color-release:   #6B7280;
+  /* Commit type colors — earthy palette */
+  --color-normal:    #D4A84A;
+  --color-error-fix: #C0624B;
+  --color-revert:    #C88B3A;
+  --color-merge:     #8B7355;
+  --color-wip:       #B8A06A;
+  --color-feature:   #7B9E5A;
+  --color-release:   #9B8570;
 }
 
 html, body, #root {

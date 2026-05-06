@@ -154,7 +154,7 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => voi
         {message}
       </div>
       <button onClick={onRetry} style={{
-        background: 'var(--accent)', color: '#fff', border: 'none', padding: '8px 20px',
+        background: 'var(--accent)', color: '#1A1107', border: 'none', padding: '8px 20px',
         borderRadius: 6, cursor: 'pointer', fontWeight: 500,
       }}>
         戻る

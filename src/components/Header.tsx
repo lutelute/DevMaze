@@ -89,7 +89,7 @@ export default function Header({ repoName, onOpenRepo, onRecentRepo, recentRepos
       )}
 
       {/* Open button */}
-      <button onClick={onOpenRepo} style={{ ...btnStyle, background: 'var(--accent)', color: '#fff', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <button onClick={onOpenRepo} style={{ ...btnStyle, background: 'var(--accent)', color: '#1A1107', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         📂 開く
       </button>
     </header>
