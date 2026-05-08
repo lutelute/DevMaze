@@ -4,7 +4,8 @@ import fs from 'fs'
 import simpleGit from 'simple-git'
 import { analyzeRepo } from '../../shared/analyzer/index'
 import { loadCache, saveCache } from './cache'
-import { ensureGithubRepo } from './github'
+import { ensureGithubRepo, fetchRepoStatus } from './github'
+import { startWatcher, stopWatcher } from './watcher'
 
 const RECENT_REPOS_PATH = path.join(app.getPath('userData'), 'recent-repos.json')
 
@@ -106,5 +107,22 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('repo:getRecent', () => {
     return loadRecentRepos()
+  })
+
+  ipcMain.handle('github:getStatus', async (_event, owner: string, name: string) => {
+    try {
+      return { ok: true, data: await fetchRepoStatus(owner, name) }
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.on('watch:start', (event, repoPath: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) startWatcher(repoPath, win)
+  })
+
+  ipcMain.on('watch:stop', () => {
+    stopWatcher()
   })
 }

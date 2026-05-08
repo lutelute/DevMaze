@@ -30,7 +30,11 @@ const TYPE_COLOR: Record<CommitType, string> = {
   revert:    '#C88B3A',
   merge:     '#8B7355',
   wip:       '#B8A06A',
-  release:   '#9B8570',
+  release:   '#E8C060',
+  chore:     '#8B9BAA',
+  docs:      '#7A9BB8',
+  refactor:  '#9B8EC4',
+  test:      '#6AAF9E',
 }
 
 /* ── component ─────────────────────────────────── */

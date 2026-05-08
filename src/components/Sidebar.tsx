@@ -1,5 +1,4 @@
-import type { AnalysisResult } from '../../shared/types'
-import type { CommitType } from '../../shared/types'
+import type { AnalysisResult, CommitType } from '../../shared/types'
 import ScoreCard from './ScoreCard'
 
 interface Props {
@@ -12,13 +11,31 @@ interface Props {
 }
 
 const TYPE_META: Record<CommitType, { label: string; color: string }> = {
-  normal:    { label: '通常',     color: '#D4A84A' },
-  feature:   { label: '機能追加', color: '#7B9E5A' },
-  error_fix: { label: 'バグ修正', color: '#C0624B' },
-  revert:    { label: 'リバート', color: '#C88B3A' },
-  merge:     { label: 'マージ',   color: '#8B7355' },
-  wip:       { label: 'WIP',      color: '#B8A06A' },
-  release:   { label: 'リリース', color: '#9B8570' },
+  normal:    { label: '通常',           color: '#D4A84A' },
+  feature:   { label: '機能追加',       color: '#7B9E5A' },
+  error_fix: { label: 'バグ修正',       color: '#C0624B' },
+  revert:    { label: 'リバート',       color: '#C88B3A' },
+  merge:     { label: 'マージ',         color: '#8B7355' },
+  wip:       { label: 'WIP',            color: '#B8A06A' },
+  release:   { label: 'リリース',       color: '#E8C060' },
+  chore:     { label: '環境整備',       color: '#8B9BAA' },
+  docs:      { label: 'ドキュメント',   color: '#7A9BB8' },
+  refactor:  { label: 'リファクタ',    color: '#9B8EC4' },
+  test:      { label: 'テスト',         color: '#6AAF9E' },
+}
+
+const ZONE_ICON: Partial<Record<CommitType, string>> = {
+  feature:   '🌱',
+  error_fix: '🔧',
+  refactor:  '♻️',
+  release:   '🚀',
+  wip:       '🌀',
+  test:      '🧪',
+  docs:      '📝',
+  chore:     '⚙️',
+  merge:     '🔀',
+  normal:    '📌',
+  revert:    '↩️',
 }
 
 function repoLabel(repoPath: string): string {
@@ -40,6 +57,8 @@ export default function Sidebar({
     else next.add(type)
     onFilterChange(next)
   }
+
+  const zones = result?.graph.zones ?? []
 
   return (
     <aside style={{
@@ -102,6 +121,45 @@ export default function Sidebar({
           </Section>
         )}
 
+        {/* 開発フェーズ（Zone） */}
+        {zones.length > 0 && (
+          <Section title="開発フェーズ">
+            {zones.map(zone => {
+              const meta = TYPE_META[zone.theme]
+              const icon = ZONE_ICON[zone.theme] ?? '📌'
+              return (
+                <button
+                  key={zone.id}
+                  onClick={() => toggleFilter(zone.theme)}
+                  title={`${zone.label} (${zone.nodeCount}コミット)`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    width: '100%', textAlign: 'left',
+                    background: filterTypes.has(zone.theme) ? `${meta.color}20` : 'none',
+                    border: `1px solid ${filterTypes.has(zone.theme) ? `${meta.color}60` : 'transparent'}`,
+                    borderRadius: 6, padding: '4px 7px', cursor: 'pointer',
+                    transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${meta.color}15` }}
+                  onMouseLeave={e => { e.currentTarget.style.background = filterTypes.has(zone.theme) ? `${meta.color}20` : 'none' }}
+                >
+                  <span style={{ fontSize: 12, flexShrink: 0 }}>{icon}</span>
+                  <span style={{
+                    flex: 1, fontSize: 11,
+                    color: filterTypes.has(zone.theme) ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {zone.label}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'monospace', flexShrink: 0 }}>
+                    {zone.nodeCount}
+                  </span>
+                </button>
+              )
+            })}
+          </Section>
+        )}
+
         {/* Stats */}
         {result && (
           <Section title="統計">
@@ -111,6 +169,12 @@ export default function Sidebar({
             <StatRow label="リバート"   value={String(result.stats.revertCount)} />
             <StatRow label="バグ修正"   value={String(result.stats.errorFixCount)} />
             <StatRow label="WIP"        value={String(result.stats.wipCount)} />
+            {result.graph.nodes.filter(n => n.isMilestone).length > 0 && (
+              <StatRow
+                label="★ マイルストーン"
+                value={String(result.graph.nodes.filter(n => n.isMilestone).length)}
+              />
+            )}
           </Section>
         )}
 

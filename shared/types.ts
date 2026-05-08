@@ -1,12 +1,16 @@
 // ===== Commit Types =====
 export type CommitType =
   | 'normal'       // 通常のコミット
-  | 'error_fix'    // fix / bug / error / hotfix を含む
+  | 'error_fix'    // fix / bug / error / hotfix
   | 'revert'       // Revert コミット
   | 'merge'        // マージコミット（親が2つ以上）
   | 'wip'          // WIP / TODO / FIXME / draft
   | 'feature'      // feat / feature / add / implement
   | 'release'      // release / v1.x.x / version
+  | 'chore'        // chore / ci / build / deps
+  | 'docs'         // docs / readme / changelog
+  | 'refactor'     // refactor / restructure / cleanup
+  | 'test'         // test / spec / coverage
 
 // ===== Raw Commit from Git =====
 export interface CommitNode {
@@ -23,7 +27,25 @@ export interface CommitNode {
   type: CommitType
   branchNames: string[]
   tagNames: string[]
-  revertedHash?: string  // revert commit の場合、元のコミットハッシュ
+  revertedHash?: string
+}
+
+// ===== Development Zone (time-based phase) =====
+export interface Zone {
+  id: string
+  label: string         // "機能開発期" / "バグ修正期" etc.
+  theme: CommitType     // 支配的なコミットタイプ
+  startTimestamp: number
+  endTimestamp: number
+  nodeCount: number
+}
+
+// ===== Lane metadata (branch purpose) =====
+export interface LaneInfo {
+  lane: number
+  label: string         // ブランチ目的ラベル（推定）
+  branchName: string    // オリジナルのブランチ名
+  theme: CommitType     // 支配的なコミットタイプ
 }
 
 // ===== Graph Node (for D3) =====
@@ -31,7 +53,7 @@ export interface MazeNode {
   id: string
   label: string
   type: CommitType
-  timestamp: number        // epoch ms
+  timestamp: number
   filesChanged: number
   insertions: number
   deletions: number
@@ -39,8 +61,10 @@ export interface MazeNode {
   message: string
   branchNames: string[]
   tagNames: string[]
-  isMainBranch: boolean    // main/master/develop ブランチ上のコミット
-  lane: number             // branch swimlane index (0=main, ±1,±2,... = feature)
+  isMainBranch: boolean
+  lane: number
+  isMilestone: boolean
+  milestoneReason?: 'tag' | 'version' | 'large_change'
   // D3 simulation adds these:
   x?: number
   y?: number
@@ -62,6 +86,8 @@ export interface MazeEdge {
 export interface MazeGraph {
   nodes: MazeNode[]
   edges: MazeEdge[]
+  zones: Zone[]
+  lanes: LaneInfo[]
 }
 
 // ===== Score Details =====

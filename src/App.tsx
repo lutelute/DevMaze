@@ -16,6 +16,8 @@ type AppState =
   | { phase: 'error'; message: string }
   | { phase: 'ready'; result: AnalysisResult; fromCache: boolean }
 
+interface GithubInfo { owner: string; name: string }
+
 export default function App() {
   const [state, setState] = useState<AppState>({ phase: 'idle' })
   const [selectedNode, setSelectedNode] = useState<MazeNode | null>(null)
@@ -23,6 +25,8 @@ export default function App() {
   const [recentRepos, setRecentRepos] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('graph')
   const [currentRepoPath, setCurrentRepoPath] = useState<string | null>(null)
+  const [githubInfo, setGithubInfo] = useState<GithubInfo | null>(null)
+  const [watchBanner, setWatchBanner] = useState(false)
 
   const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -41,6 +45,7 @@ export default function App() {
 
     setState({ phase: 'loading', progress: '初期化中...' })
     setSelectedNode(null)
+    setGithubInfo(null)
 
     const result = await window.electronAPI.analyzeRepo(resolved, forceRefresh)
     handleAnalysisResult(resolved, result)
@@ -49,9 +54,9 @@ export default function App() {
   const openGithubRepo = useCallback(async (input: string) => {
     setState({ phase: 'loading', progress: 'GitHubリポジトリを確認中...' })
     setSelectedNode(null)
+    setGithubInfo(null)
 
     const result = await window.electronAPI.openGithubRepo(input)
-    // GitHub の場合、repoPath は bare clone のローカルパス（resultから取れないのでinputを仮パスとして記録）
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
     if (!r.ok || !r.data) {
       setState({ phase: 'error', message: r.error ?? '不明なエラー' })
@@ -60,6 +65,13 @@ export default function App() {
     setState({ phase: 'ready', result: r.data, fromCache: r.fromCache ?? false })
     setCurrentRepoPath(r.data.repoPath)
     setRecentRepos(prev => [r.data!.repoPath, ...prev.filter(p => p !== r.data!.repoPath)].slice(0, 10))
+
+    // owner/name を解析して保持
+    const s = input.trim().replace(/\.git$/, '')
+    const short = s.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/)
+    const url = s.match(/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+?)(?:\/.*)?$/)
+    const m = short ?? url
+    if (m) setGithubInfo({ owner: m[1], name: m[2] })
   }, [])
 
   const refreshRepo = useCallback(() => {
@@ -83,6 +95,14 @@ export default function App() {
     })
   }, [openRepo])
 
+  // ローカルリポジトリ監視
+  useEffect(() => {
+    if (!currentRepoPath) { window.electronAPI.stopWatch?.(); return }
+    window.electronAPI.startWatch?.(currentRepoPath)
+    const off = window.electronAPI.onWatchChanged?.(() => setWatchBanner(true))
+    return () => { off?.(); window.electronAPI.stopWatch?.() }
+  }, [currentRepoPath])
+
   const result = state.phase === 'ready' ? state.result : null
   const fromCache = state.phase === 'ready' ? state.fromCache : false
 
@@ -96,7 +116,40 @@ export default function App() {
         onRefresh={result ? refreshRepo : undefined}
         recentRepos={recentRepos}
         fromCache={fromCache}
+        githubInfo={githubInfo}
       />
+      {watchBanner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '6px 16px',
+          background: 'rgba(212,168,74,0.12)',
+          borderBottom: '1px solid rgba(212,168,74,0.25)',
+          fontSize: 12, color: 'var(--accent)',
+          flexShrink: 0,
+        }}>
+          <span>新しいコミットを検出しました</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => { setWatchBanner(false); refreshRepo() }}
+              style={{
+                background: 'var(--accent)', color: '#1A1107', border: 'none',
+                borderRadius: 5, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              再読み込み
+            </button>
+            <button
+              onClick={() => setWatchBanner(false)}
+              style={{
+                background: 'transparent', color: 'var(--text-secondary)', border: 'none',
+                borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar

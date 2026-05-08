@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import * as d3 from 'd3'
 import type { MazeGraph, MazeNode, MazeEdge, CommitType } from '../../shared/types'
+import type { Zone } from '../../shared/types'
 
 interface Props {
   graph: MazeGraph
@@ -21,6 +22,10 @@ const TYPE_COLOR: Record<CommitType, string> = {
   merge:     '#A88B5A',
   wip:       '#B8A06A',
   release:   '#E8C060',
+  chore:     '#8B9BAA',
+  docs:      '#7A9BB8',
+  refactor:  '#9B8EC4',
+  test:      '#6AAF9E',
 }
 
 const EDGE_COLOR: Record<MazeEdge['type'], string> = {
@@ -67,7 +72,18 @@ function hexagon(r: number): string {
 // ── Component ──────────────────────────────────────────────
 export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNodeId }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
+  const nodesRef = useRef<D3Node[]>([])
   const [displayLimit, setDisplayLimit] = useState<number>(150)
+
+  const handleFitView = useCallback(() => {
+    if (!svgRef.current || !zoomRef.current) return
+    const svg = d3.select(svgRef.current)
+    const g = svg.select<SVGGElement>('g.zoom-layer')
+    const W = svgRef.current.clientWidth
+    const H = svgRef.current.clientHeight
+    fitView(svg, g, zoomRef.current, nodesRef.current, W, H)
+  }, [])
 
   const { nodes, links, totalCount } = useMemo(() => {
     const filtered = filterTypes.size === 0
@@ -157,6 +173,8 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         g.selectAll<SVGLineElement, unknown>('.milestone-gate').attr('opacity', Math.min(0.6, k * 0.8))
       })
     svg.call(zoom)
+    zoomRef.current = zoom
+    nodesRef.current = nodes
 
     // ── Time & layout ─────────────────────────────────────
     const timestamps = nodes.map(n => n.timestamp)
@@ -203,8 +221,43 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         .attr('opacity', 0.18)
     }
 
-    // ── Milestone gates (tags / releases) ─────────────────
-    const taggedNodes = nodes.filter(n => n.tagNames.length > 0 || n.type === 'release')
+    // ── Zone bands (time-based development phases) ────────
+    const zones: Zone[] = (graph as MazeGraph & { zones?: Zone[] }).zones ?? []
+    zones.forEach((zone, i) => {
+      const x1 = xPos(zone.startTimestamp)
+      const x2 = xPos(zone.endTimestamp)
+      const color = TYPE_COLOR[zone.theme] ?? '#D4A84A'
+      const bandTop = -(maxLane + 1) * LANE_HEIGHT - 24
+      const bandH   = (maxLane * 2 + 2) * LANE_HEIGHT + 48
+
+      // 帯背景
+      g.append('rect')
+        .attr('class', 'zone-band')
+        .attr('x', x1 - 6)
+        .attr('y', bandTop)
+        .attr('width', Math.max(20, x2 - x1 + 12))
+        .attr('height', bandH)
+        .attr('fill', color)
+        .attr('opacity', i % 2 === 0 ? 0.055 : 0.03)
+        .attr('rx', 8)
+
+      // 上部ラベル
+      g.append('text')
+        .attr('class', 'zone-label')
+        .attr('x', (x1 + x2) / 2)
+        .attr('y', bandTop - 6)
+        .attr('text-anchor', 'middle')
+        .attr('fill', color)
+        .attr('font-size', 8)
+        .attr('font-family', 'JetBrains Mono, monospace')
+        .attr('font-weight', '600')
+        .attr('letter-spacing', '0.5')
+        .attr('opacity', 0.65)
+        .text(zone.label)
+    })
+
+    // ── Milestone gates (isMilestone nodes) ───────────────
+    const taggedNodes = nodes.filter(n => n.isMilestone)
     taggedNodes.forEach(n => {
       const x  = xPos(n.timestamp)
       const gh = laneH + LANE_HEIGHT
@@ -220,9 +273,18 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         .attr('opacity', 0.35)
         .attr('filter', 'url(#milestone-glow)')
 
-      // Tags above
-      n.tagNames.slice(0, 2).forEach((tag, i) => {
+      // Labels above gate
+      const labels: string[] = n.tagNames.length > 0
+        ? n.tagNames.slice(0, 2)
+        : n.milestoneReason === 'version'
+          ? [n.message.match(/v\d+[\d.]+/)?.[0] ?? n.label]
+          : n.milestoneReason === 'large_change'
+            ? [`⚡ ${n.label}`]
+            : [n.label]
+
+      labels.forEach((tag, i) => {
         const yy = -gh - 10 - i * 18
+        const labelColor = n.milestoneReason === 'large_change' ? '#C0624B' : '#D4A84A'
         g.append('rect')
           .attr('class', 'milestone-label')
           .attr('x', x - 4).attr('y', yy - 12)
@@ -232,7 +294,7 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
           .attr('class', 'milestone-label')
           .attr('x', x + 2).attr('y', yy)
           .attr('text-anchor', 'start')
-          .attr('fill', '#D4A84A')
+          .attr('fill', labelColor)
           .attr('font-size', 9).attr('font-family', 'JetBrains Mono, monospace')
           .attr('font-weight', '600')
           .attr('opacity', 0.9)
@@ -240,17 +302,23 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       })
     })
 
-    // ── Branch name labels (left anchor per lane) ─────────
-    const laneMap = new Map<number, string>()
+    // ── Lane labels (from LaneInfo — purpose-aware) ───────
+    const laneInfoMap = new Map((graph.lanes ?? []).map(l => [l.lane, l]))
+    const laneLabelMap = new Map<number, string>()
     nodes.forEach(n => {
-      if (!laneMap.has(n.lane)) {
-        const name = n.branchNames.find(b => !/^(origin\/|HEAD)/.test(b) && b !== 'HEAD')
+      if (!laneLabelMap.has(n.lane)) {
+        const info = laneInfoMap.get(n.lane)
+        const name = info?.label
+          ?? n.branchNames.find(b => !/^(origin\/|HEAD)/.test(b) && b !== 'HEAD')
           ?? (n.lane === 0 ? 'main' : `lane ${n.lane}`)
-        laneMap.set(n.lane, name)
+        laneLabelMap.set(n.lane, name)
       }
     })
-    laneMap.forEach((name, lane) => {
-      const bandColor = lane === 0 ? '#D4A84A' : LANE_BAND_COLORS[(Math.abs(lane) - 1) % LANE_BAND_COLORS.length]
+    laneLabelMap.forEach((name, lane) => {
+      const info = laneInfoMap.get(lane)
+      const themeColor = info ? (TYPE_COLOR[info.theme] ?? '#D4A84A') : '#D4A84A'
+      const bandColor = lane === 0 ? '#D4A84A' : themeColor
+      const display = name.length > 22 ? name.slice(0, 20) + '…' : name
       g.append('text')
         .attr('class', 'lane-label')
         .attr('x', -30)
@@ -260,8 +328,8 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         .attr('font-size', 9)
         .attr('font-family', 'JetBrains Mono, monospace')
         .attr('font-weight', '500')
-        .attr('opacity', 0.5)
-        .text(name.length > 20 ? name.slice(0, 18) + '…' : name)
+        .attr('opacity', 0.6)
+        .text(display)
     })
 
     // ── Edges ─────────────────────────────────────────────
@@ -327,7 +395,18 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       }
     })
 
-    // Tag dot
+    // Milestone star (★ for tag/version, ⚡ for large_change)
+    nodeElems.filter(d => d.isMilestone)
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dy', d => -nodeRadius(d) - 5)
+      .attr('font-size', d => d.milestoneReason === 'large_change' ? 9 : 10)
+      .attr('pointer-events', 'none')
+      .attr('fill', d => d.milestoneReason === 'large_change' ? '#C0624B' : '#D4A84A')
+      .attr('opacity', 0.9)
+      .text(d => d.milestoneReason === 'large_change' ? '⚡' : '★')
+
+    // Tag dot (small corner indicator when tags exist)
     nodeElems.filter(d => d.tagNames.length > 0)
       .append('circle')
       .attr('r', 3.5)
@@ -415,12 +494,15 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       nodeElems.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
 
-    sim.on('end', () => fitView(svg, g, zoom, nodes, W, H))
-    const fitTimer = setTimeout(() => fitView(svg, g, zoom, nodes, W, H), 4000)
+    // 初回のみ自動フィット（フィルター変更では再フィットしない）
+    let hasFit = false
+    sim.on('end', () => {
+      if (!hasFit) { fitView(svg, g, zoom, nodes, W, H); hasFit = true }
+    })
 
     if (selectedNodeId) applyHighlight(nodeElems, selectedNodeId)
 
-    return () => { sim.stop(); clearTimeout(fitTimer) }
+    return () => { sim.stop() }
   }, [nodes, links, handleNodeClick])
 
   useEffect(() => {
@@ -443,13 +525,17 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       }}>
         <div style={{ color: 'var(--text-dim)', fontWeight: 600, letterSpacing: '0.8px', marginBottom: 2 }}>凡例</div>
         {([
-          { label: 'Main',     color: TYPE_COLOR.normal,    shape: 'circle',  main: true,  dashed: false },
-          { label: 'Feature',  color: TYPE_COLOR.feature,   shape: 'circle',  main: false, dashed: false },
-          { label: 'Merge',    color: TYPE_COLOR.merge,     shape: 'diamond', main: false, dashed: false },
-          { label: 'Release',  color: TYPE_COLOR.release,   shape: 'hex',     main: false, dashed: false },
-          { label: 'Bugfix',   color: TYPE_COLOR.error_fix, shape: 'circle',  main: false, dashed: false },
-          { label: 'Revert',   color: TYPE_COLOR.revert,    shape: 'circle',  main: false, dashed: true  },
-          { label: 'Milestone',color: '#D4A84A',            shape: 'gate',    main: false, dashed: false },
+          { label: 'Main',      color: TYPE_COLOR.normal,    shape: 'circle',  main: true,  dashed: false },
+          { label: 'Feature',   color: TYPE_COLOR.feature,   shape: 'circle',  main: false, dashed: false },
+          { label: 'Merge',     color: TYPE_COLOR.merge,     shape: 'diamond', main: false, dashed: false },
+          { label: 'Release',   color: TYPE_COLOR.release,   shape: 'hex',     main: false, dashed: false },
+          { label: 'Bugfix',    color: TYPE_COLOR.error_fix, shape: 'circle',  main: false, dashed: false },
+          { label: 'Refactor',  color: TYPE_COLOR.refactor,  shape: 'circle',  main: false, dashed: false },
+          { label: 'Test',      color: TYPE_COLOR.test,      shape: 'circle',  main: false, dashed: false },
+          { label: 'Docs',      color: TYPE_COLOR.docs,      shape: 'circle',  main: false, dashed: false },
+          { label: 'Chore',     color: TYPE_COLOR.chore,     shape: 'circle',  main: false, dashed: false },
+          { label: 'Revert',    color: TYPE_COLOR.revert,    shape: 'circle',  main: false, dashed: true  },
+          { label: '★ Milestone',color: '#D4A84A',           shape: 'gate',    main: false, dashed: false },
         ]).map(({ label, color, shape, dashed, main }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {shape === 'gate' ? (
@@ -474,7 +560,7 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         ))}
       </div>
 
-      {/* Display limit */}
+      {/* Display limit + Home button */}
       <div style={{
         position: 'absolute', bottom: 14, right: 14,
         display: 'flex', alignItems: 'center', gap: 5,
@@ -482,6 +568,18 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
         border: '1px solid var(--border)', borderRadius: 8,
         padding: '5px 10px', fontSize: 11, color: 'var(--text-secondary)',
       }}>
+        <button
+          onClick={handleFitView}
+          title="全体表示 (🏠)"
+          style={{
+            background: 'transparent', border: '1px solid var(--border)',
+            borderRadius: 4, padding: '2px 6px', cursor: 'pointer',
+            color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1,
+            marginRight: 4,
+          }}
+        >
+          🏠
+        </button>
         <span style={{ color: 'var(--text-dim)' }}>表示</span>
         {DISPLAY_LIMITS.map(n => (
           <button key={n} onClick={() => setDisplayLimit(n)} style={{
@@ -557,6 +655,7 @@ function getTooltipEl() {
 const TYPE_LABEL: Record<CommitType, string> = {
   normal: '通常', feature: '機能追加', error_fix: 'バグ修正',
   revert: 'リバート', merge: 'マージ', wip: 'WIP', release: 'リリース',
+  chore: '環境整備', docs: 'ドキュメント', refactor: 'リファクタ', test: 'テスト',
 }
 
 function showTooltip(event: MouseEvent, d: D3Node) {
@@ -572,10 +671,17 @@ function showTooltip(event: MouseEvent, d: D3Node) {
     `<span style="background:rgba(100,100,100,0.2);color:var(--text-secondary);padding:1px 6px;border-radius:3px;font-size:10px">${b}</span>`
   ).join(' ')
 
+  const milestoneLabel = d.isMilestone
+    ? `<span style="background:rgba(212,168,74,0.18);color:#D4A84A;padding:1px 6px;border-radius:3px;font-size:10px">
+        ${{ tag: '★ タグ', version: '★ バージョン', large_change: '⚡ 大規模変更' }[d.milestoneReason ?? 'tag'] ?? '★'}
+      </span>`
+    : ''
+
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
       <span style="font-weight:700;font-family:monospace;color:${color};font-size:11px">${d.label}</span>
       <span style="background:${color}22;color:${color};padding:1px 6px;border-radius:3px;font-size:10px;border:1px solid ${color}44">${TYPE_LABEL[d.type]}</span>
+      ${milestoneLabel}
       ${tags}
     </div>
     <div style="color:var(--text-primary);margin-bottom:7px;line-height:1.5;font-size:12px">${d.message.split('\n')[0].slice(0, 100)}${d.message.length > 100 ? '…' : ''}</div>

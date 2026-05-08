@@ -6,13 +6,17 @@ interface Props {
 }
 
 const TYPE_LABELS: Record<CommitType, { label: string; color: string }> = {
-  normal:    { label: '通常コミット', color: '#D4A84A' },
-  feature:   { label: '機能追加',     color: '#7B9E5A' },
-  error_fix: { label: 'バグ修正',     color: '#C0624B' },
-  revert:    { label: 'リバート',     color: '#C88B3A' },
-  merge:     { label: 'マージ',       color: '#8B7355' },
-  wip:       { label: 'WIP',          color: '#B8A06A' },
-  release:   { label: 'リリース',     color: '#9B8570' },
+  normal:    { label: '通常コミット',     color: '#D4A84A' },
+  feature:   { label: '機能追加',         color: '#7B9E5A' },
+  error_fix: { label: 'バグ修正',         color: '#C0624B' },
+  revert:    { label: 'リバート',         color: '#C88B3A' },
+  merge:     { label: 'マージ',           color: '#8B7355' },
+  wip:       { label: 'WIP',              color: '#B8A06A' },
+  release:   { label: 'リリース',         color: '#E8C060' },
+  chore:     { label: '環境整備',         color: '#8B9BAA' },
+  docs:      { label: 'ドキュメント',     color: '#7A9BB8' },
+  refactor:  { label: 'リファクタリング', color: '#9B8EC4' },
+  test:      { label: 'テスト',           color: '#6AAF9E' },
 }
 
 export default function NodeDetail({ node, onClose }: Props) {
@@ -32,13 +36,21 @@ export default function NodeDetail({ node, onClose }: Props) {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 16px', borderBottom: '1px solid var(--border)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{
             fontSize: 10, fontWeight: 600, color: meta.color,
             background: meta.color + '20', padding: '2px 6px', borderRadius: 4,
           }}>
             {meta.label}
           </span>
+          {node.isMilestone && (
+            <span style={{
+              fontSize: 10, color: node.milestoneReason === 'large_change' ? '#C0624B' : '#D4A84A',
+              background: 'rgba(212,168,74,0.12)', padding: '2px 6px', borderRadius: 4,
+            }}>
+              {{ tag: '★ タグ', version: '★ バージョン', large_change: '⚡ 大規模変更' }[node.milestoneReason ?? 'tag']}
+            </span>
+          )}
           <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-secondary)' }}>
             {node.label}
           </span>

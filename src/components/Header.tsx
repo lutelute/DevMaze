@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { MazeLogo, GitHubIcon, FolderIcon, RefreshIcon } from './Icons'
+import type { RepoStatus } from '../types/electron'
 
 interface Props {
   repoName?: string
@@ -9,6 +10,7 @@ interface Props {
   onRefresh?: () => void
   recentRepos: string[]
   fromCache?: boolean
+  githubInfo?: { owner: string; name: string } | null
 }
 
 type ValidationState = 'idle' | 'checking' | 'ok' | 'error'
@@ -23,7 +25,7 @@ function parseGithubShorthand(input: string): { owner: string; name: string } | 
 }
 
 export default function Header({
-  repoName, onOpenRepo, onOpenGithub, onRecentRepo, onRefresh, recentRepos, fromCache,
+  repoName, onOpenRepo, onOpenGithub, onRecentRepo, onRefresh, recentRepos, fromCache, githubInfo,
 }: Props) {
   const [showGithub, setShowGithub] = useState(false)
   const [githubInput, setGithubInput] = useState('')
@@ -31,6 +33,8 @@ export default function Header({
   const githubRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const [ghStatus, setGhStatus] = useState<RepoStatus | null>(null)
+  const [ghLoading, setGhLoading] = useState(false)
 
   // ポップアップの外クリックで閉じる
   useEffect(() => {
@@ -51,6 +55,18 @@ export default function Header({
       setValidation('idle')
     }
   }, [showGithub])
+
+  // GitHub リポジトリが変わったらステータスを取得
+  useEffect(() => {
+    setGhStatus(null)
+    if (!githubInfo) return
+    setGhLoading(true)
+    window.electronAPI.getGithubStatus(githubInfo.owner, githubInfo.name).then(res => {
+      const r = res as { ok: boolean; data?: RepoStatus }
+      if (r.ok && r.data) setGhStatus(r.data)
+      setGhLoading(false)
+    }).catch(() => setGhLoading(false))
+  }, [githubInfo?.owner, githubInfo?.name])
 
   // GitHub API でリアルタイム検証（500ms デバウンス）
   useEffect(() => {
@@ -115,7 +131,7 @@ export default function Header({
       {/* セパレーター */}
       <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 12px', flexShrink: 0 }} />
 
-      {/* リポジトリ名 + キャッシュバッジ */}
+      {/* リポジトリ名 + キャッシュバッジ + GitHubステータス */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', minWidth: 0 }}>
         {repoName ? (
           <>
@@ -135,6 +151,20 @@ export default function Header({
               }}>
                 cached
               </span>
+            )}
+            {ghLoading && (
+              <span style={{ fontSize: 10, color: 'var(--text-dim, #6a5f4a)', flexShrink: 0 }}>…</span>
+            )}
+            {ghStatus && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                <GhBadge title={`PR: ${ghStatus.prs} open`}>
+                  PR {ghStatus.prs}
+                </GhBadge>
+                <GhBadge title={`Issues: ${ghStatus.issues} open`}>
+                  #{ghStatus.issues}
+                </GhBadge>
+                <CiBadge status={ghStatus.ciStatus} name={ghStatus.ciName} />
+              </div>
             )}
           </>
         ) : (
@@ -264,6 +294,36 @@ function IconBtn({ onClick, title, children }: { onClick: () => void; title: str
     >
       {children}
     </button>
+  )
+}
+
+function GhBadge({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <span title={title} style={{
+      fontSize: 10, color: 'var(--text-secondary)',
+      background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+      padding: '0 5px', borderRadius: 3, lineHeight: '16px', whiteSpace: 'nowrap',
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function CiBadge({ status, name }: { status: RepoStatus['ciStatus']; name: string | null }) {
+  const cfg = {
+    success: { icon: '✓', color: '#6AAF6A' },
+    failure: { icon: '✗', color: '#EF4444' },
+    pending: { icon: '○', color: '#A07840' },
+    unknown: { icon: '–', color: 'var(--text-dim, #6a5f4a)' },
+  }[status]
+  return (
+    <span title={name ? `CI: ${name} (${status})` : `CI: ${status}`} style={{
+      fontSize: 10, color: cfg.color,
+      background: 'var(--bg-elevated)', border: `1px solid ${cfg.color}44`,
+      padding: '0 5px', borderRadius: 3, lineHeight: '16px', whiteSpace: 'nowrap',
+    }}>
+      CI {cfg.icon}
+    </span>
   )
 }
 

@@ -14,7 +14,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'simple-git', 'path', 'fs', 'os', 'child_process'],
+              external: ['electron', 'simple-git', 'chokidar', 'path', 'fs', 'os', 'child_process'],
             },
           },
         },

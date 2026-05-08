@@ -21,4 +21,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getInitialRepo: (): Promise<string | null> =>
     ipcRenderer.invoke('dev:getInitialRepo'),
+
+  getGithubStatus: (owner: string, name: string): Promise<unknown> =>
+    ipcRenderer.invoke('github:getStatus', owner, name),
+
+  startWatch: (repoPath: string): void =>
+    ipcRenderer.send('watch:start', repoPath),
+
+  stopWatch: (): void =>
+    ipcRenderer.send('watch:stop'),
+
+  onWatchChanged: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('watch:changed', listener)
+    return () => ipcRenderer.removeListener('watch:changed', listener)
+  },
 })
