@@ -14,6 +14,8 @@ interface Props {
   struggleIds?: Set<string>
   /** まとまりを開いたとき（そのまとまりに属するコミットを強調させる） */
   onDrillDown?: (hashes: string[]) => void
+  /** 表示単位を手で切り替えたときに、注目を解除する */
+  onClearFocus?: () => void
 }
 
 // まとまり表示のときは、複数コミットを1つのノードとして扱う（count > 1）
@@ -268,7 +270,8 @@ const ZONE_LABEL_COLOR = (theme: CommitType) => TYPE_COLOR[theme] ?? '#D4A84A'
 
 // ── Component ──────────────────────────────────────────────
 export default function MazeGraph({
-  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds, onDrillDown,
+  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds,
+  onDrillDown, onClearFocus,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
@@ -358,6 +361,19 @@ export default function MazeGraph({
       totalCount: filtered.length, unit, sessionCount: sessions.length,
     }
   }, [graph, filterTypes, displayLimit, unitOverride, highlightIds])
+
+  // 強調対象はコミットのハッシュで来る。まとまり表示では ID が別物なので、
+  // メンバーを見て読み替える。読み替えないと、まとまりに戻った瞬間に
+  // どれも一致せず、画面全部が沈む。
+  const effectiveHighlight = useMemo(() => {
+    if (!highlightIds || highlightIds.size === 0) return undefined
+    if (unit === 'commit') return highlightIds
+    const mapped = new Set<string>()
+    for (const n of nodes) {
+      if (n.memberHashes?.some(h => highlightIds.has(h))) mapped.add(n.id)
+    }
+    return mapped.size > 0 ? mapped : undefined
+  }, [highlightIds, nodes, unit])
 
   const handleNodeClick = useCallback((node: D3Node) => {
     // まとまりをクリックしたら、その中のコミットに降りる（意味的なズーム）
@@ -805,7 +821,9 @@ export default function MazeGraph({
     sim.stop()
     fitLayout(svg, zoom, layout, W, H)
 
-    if (selectedNodeId || highlightIds) applyHighlight(nodeElems, selectedNodeId, highlightIds)
+    if (selectedNodeId || effectiveHighlight) {
+      applyHighlight(nodeElems, selectedNodeId, effectiveHighlight)
+    }
 
     return () => { sim.stop() }
   }, [nodes, links, handleNodeClick, struggleIds, unit])
@@ -813,8 +831,8 @@ export default function MazeGraph({
   useEffect(() => {
     if (!svgRef.current) return
     const nodeElems = d3.select(svgRef.current).selectAll<SVGGElement, D3Node>('g.node')
-    applyHighlight(nodeElems, selectedNodeId, highlightIds)
-  }, [selectedNodeId, highlightIds])
+    applyHighlight(nodeElems, selectedNodeId, effectiveHighlight)
+  }, [selectedNodeId, effectiveHighlight])
 
   // 選択されたコミットが画面外なら、そこまで運ぶ（沼や検索から飛んだとき用）
   useEffect(() => {
@@ -904,7 +922,7 @@ export default function MazeGraph({
       }}>
         {/* まとまり / コミット の切り替え。900件を1件ずつ描いても全体は読めない */}
         {(['session', 'commit'] as const).map(u => (
-          <button key={u} onClick={() => setUnitOverride(u)} style={{
+          <button key={u} onClick={() => { setUnitOverride(u); onClearFocus?.() }} style={{
             background: unit === u ? 'var(--accent)' : 'transparent',
             border: `1px solid ${unit === u ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: 4, padding: '2px 8px',
@@ -985,7 +1003,9 @@ function applyHighlight(
   selectedId?: string,
   highlightIds?: Set<string>
 ) {
-  const dimming = !!highlightIds && highlightIds.size > 0
+  // 該当が1つも無いのに暗くすると、画面全部が沈んで「壊れた」ようにしか見えない
+  const dimming = !!highlightIds && highlightIds.size > 0 &&
+    nodeElems.data().some(d => highlightIds.has(d.id))
   nodeElems.attr('opacity', (d: D3Node) =>
     !dimming || highlightIds!.has(d.id) ? 1 : 0.14)
   nodeElems.select('.glow').attr('opacity', (d: D3Node) =>

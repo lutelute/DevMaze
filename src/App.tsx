@@ -332,6 +332,7 @@ export default function App() {
                   selectedNodeId={selectedNode?.id}
                   highlightIds={highlightIds}
                   struggleIds={struggleNodeIds}
+                  onClearFocus={() => setFocus(null)}
                   onDrillDown={hashes => {
                     setFocus({ kind: 'session', hashes })
                     const first = result!.graph.nodes.find(n => n.id === hashes[0])
