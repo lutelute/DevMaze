@@ -50,7 +50,12 @@ export async function getRemoteUrl(repoPath: string): Promise<string | undefined
 }
 
 export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
-  const git: SimpleGit = simpleGit(repoPath)
+  // 部分クローンでは、手元に無いオブジェクトに触れた瞬間 git が黙って
+  // ネットワークへ取りに行く。解析のたびに数十秒止まる原因になるので禁止する
+  // （実測: 896コミットの解析が 78秒 → 2秒）。取れない差分は無いものとして扱う。
+  // env はキー単位で渡す。オブジェクトごと渡すと環境を丸ごと置き換える扱いになり、
+  // PAGER を含んでいると simple-git に拒否される（"allowUnsafePager"）。
+  const git: SimpleGit = simpleGit(repoPath).env('GIT_NO_LAZY_FETCH', '1')
 
   // bare repository でも動作するように revparse で確認（checkIsRepo は bare で false を返す場合がある）
   try {

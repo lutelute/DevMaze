@@ -9,6 +9,13 @@ const execFileAsync = promisify(execFile)
 // DevMaze が解析する最大コミット数に合わせた上限
 const FETCH_DEPTH = 1000
 
+// ファイル内容の取得方針。
+// blob:none（内容を一切取らない）にすると軽いが、numstat が動かず
+// ファイル単位の差分が取れない ＝ 沼もホットスポットも検出できない（実測: 取得率6%）。
+// 100KB 以下だけ取れば、ソースコードはほぼ全部そろって画像や成果物は避けられる
+// （AtelierX 896コミットで 15MB → 21MB、6秒）。
+const BLOB_FILTER = '--filter=blob:limit=100k'
+
 function githubReposDir(): string {
   return path.join(app.getPath('userData'), 'github-repos')
 }
@@ -50,6 +57,57 @@ export function parseGithubInput(input: string): ParsedGithubRepo | null {
   return null
 }
 
+/**
+ * bare clone に fetch の refspec を用意する。
+ *
+ * `git clone --bare` は remote.origin.fetch を設定しない。設定が無いと、
+ * fetch はオブジェクトを取ってくるだけで **参照を1つも更新しない**。
+ * その結果、キャッシュはクローンした時点で永久に凍結し、
+ * 新しいコミットは「オブジェクトはあるのにどの ref からも辿れない」状態になって
+ * `git log --all` に現れない（実測: AtelierX が 303 コミットで止まっていた）。
+ */
+async function ensureFetchRefspec(localPath: string): Promise<void> {
+  try {
+    const { stdout } = await execFileAsync('git', [
+      '--git-dir', localPath, 'config', '--get-all', 'remote.origin.fetch',
+    ])
+    if (stdout.trim().length > 0) return
+  } catch {
+    // 未設定のときは exit 1 で来る。そのまま設定しに行く
+  }
+
+  await execFileAsync('git', [
+    '--git-dir', localPath, 'config', '--add',
+    'remote.origin.fetch', '+refs/heads/*:refs/heads/*',
+  ])
+}
+
+/**
+ * 昔 blob:none で取ったキャッシュを、いまの方針（小さい blob は取る）に揃える。
+ * 一度だけ --refetch が必要（フィルタを緩めても、既存コミットのぶんは取り直さないため）。
+ */
+async function upgradeBlobFilter(localPath: string, onProgress: (msg: string) => void): Promise<void> {
+  let current = ''
+  try {
+    const { stdout } = await execFileAsync('git', [
+      '--git-dir', localPath, 'config', '--get', 'remote.origin.partialclonefilter',
+    ])
+    current = stdout.trim()
+  } catch {
+    return   // 部分クローンでなければ何もしない
+  }
+
+  if (current !== 'blob:none') return
+
+  onProgress('ファイル差分を取り直しています（初回のみ）...')
+  await execFileAsync('git', [
+    '--git-dir', localPath, 'fetch', '--refetch', BLOB_FILTER, '--quiet', 'origin',
+  ], {
+    timeout: 300_000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' },
+  })
+}
+
 export async function ensureGithubRepo(
   input: string,
   onProgress: (msg: string) => void
@@ -64,25 +122,28 @@ export async function ensureGithubRepo(
   if (fs.existsSync(path.join(localPath, 'HEAD'))) {
     // 既に取得済み → 差分のみ fetch
     onProgress(`${owner}/${name} の新着コミットを確認中...`)
+    await ensureFetchRefspec(localPath)   // 古いキャッシュには refspec が無い
+    await upgradeBlobFilter(localPath, onProgress)
     await execFileAsync('git', [
       '--git-dir', localPath,
       'fetch',
-      '--filter=blob:none',    // ファイル内容は取らない
+      BLOB_FILTER,
       `--depth=${FETCH_DEPTH}`, // 最大1000件に収める
       '--quiet',
-    ], { timeout: 60_000 })
+    ], { timeout: 120_000 })
     onProgress('最新化完了')
   } else {
     // 初回 —— commit/tree メタデータのみ、最大1000件
     fs.mkdirSync(path.dirname(localPath), { recursive: true })
-    onProgress(`${owner}/${name} のコミット履歴を取得中（ファイル内容なし、最大${FETCH_DEPTH}件）...`)
+    onProgress(`${owner}/${name} のコミット履歴を取得中（最大${FETCH_DEPTH}件）...`)
     await execFileAsync('git', [
       'clone', '--bare',
-      '--filter=blob:none',    // ファイル内容は取らない
+      BLOB_FILTER,
       `--depth=${FETCH_DEPTH}`, // コミット数を1000に制限
       '--quiet',
       url, localPath,
     ], { timeout: 120_000 })
+    await ensureFetchRefspec(localPath)   // 次回から fetch で参照が更新されるように
     onProgress('取得完了')
   }
 
@@ -123,12 +184,17 @@ export async function fetchLatest(repoPath: string): Promise<{
     return { fetched: false, newCommits: 0 }
   }
 
+  if (bare) {
+    await ensureFetchRefspec(repoPath)
+    try { await upgradeBlobFilter(repoPath, () => {}) } catch { /* 失敗しても取り込みは続ける */ }
+  }
+
   const before = await countCommits()
 
   try {
     await execFileAsync('git', [
       ...gitArgs, 'fetch', '--all', '--quiet', '--prune',
-      ...(bare ? ['--filter=blob:none', `--depth=${FETCH_DEPTH}`] : []),
+      ...(bare ? [BLOB_FILTER, `--depth=${FETCH_DEPTH}`] : []),
     ], {
       timeout: 90_000,
       // 認証を求められたまま固まらないようにする
