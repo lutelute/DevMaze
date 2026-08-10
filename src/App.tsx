@@ -38,6 +38,7 @@ export default function App() {
   const [focus, setFocus] = useState<Focus>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [remoteBehind, setRemoteBehind] = useState(false)
 
   const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -129,6 +130,23 @@ export default function App() {
     })
   }, [openRepo])
 
+  // リモートに新着が無いかを自分から見に行く。
+  // 手元のファイル監視だけでは、GitHub 側に積まれたコミットには永久に気づけない。
+  useEffect(() => {
+    if (!currentRepoPath) { setRemoteBehind(false); return }
+    let alive = true
+
+    const check = async () => {
+      const res = await window.electronAPI.checkRemote?.(currentRepoPath)
+      if (alive && res && !res.error) setRemoteBehind(res.behind)
+    }
+
+    setRemoteBehind(false)
+    check()
+    const timer = setInterval(check, 5 * 60_000)   // 5分ごと
+    return () => { alive = false; clearInterval(timer) }
+  }, [currentRepoPath])
+
   // ローカルリポジトリ監視
   useEffect(() => {
     if (!currentRepoPath) { window.electronAPI.stopWatch?.(); return }
@@ -218,7 +236,7 @@ export default function App() {
         fromCache={fromCache}
         githubInfo={githubInfo}
       />
-      {watchBanner && (
+      {(watchBanner || remoteBehind) && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '6px 16px',
@@ -227,19 +245,23 @@ export default function App() {
           fontSize: 12, color: 'var(--accent)',
           flexShrink: 0,
         }}>
-          <span>新しいコミットを検出しました</span>
+          <span>
+            {remoteBehind
+              ? 'リモート（GitHub）に、まだ取り込んでいないコミットがあります'
+              : '手元に新しいコミットを検出しました'}
+          </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => { setWatchBanner(false); refreshRepo() }}
+              onClick={() => { setWatchBanner(false); setRemoteBehind(false); refreshRepo() }}
               style={{
                 background: 'var(--accent)', color: '#1A1107', border: 'none',
                 borderRadius: 5, padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
               }}
             >
-              再読み込み
+              {remoteBehind ? '取り込む' : '再読み込み'}
             </button>
             <button
-              onClick={() => setWatchBanner(false)}
+              onClick={() => { setWatchBanner(false); setRemoteBehind(false) }}
               style={{
                 background: 'transparent', color: 'var(--text-secondary)', border: 'none',
                 borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer',

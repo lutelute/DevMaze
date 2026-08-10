@@ -143,6 +143,77 @@ export async function fetchLatest(repoPath: string): Promise<{
   return { fetched: true, newCommits: Math.max(0, after - before) }
 }
 
+export interface RemoteCheck {
+  /** リモートに手元より新しいコミットがあるか */
+  behind: boolean
+  branch: string | null
+  localHead: string | null
+  remoteHead: string | null
+  error?: string
+}
+
+/**
+ * リモートに新しいコミットがあるかだけを調べる（取り込みはしない）。
+ *
+ * ls-remote は参照の一覧を返すだけなので速く、通信量もほぼ無い。
+ * 「更新されているのに気づけない」を防ぐために、開いたときと定期的に呼ぶ。
+ */
+export async function checkRemote(repoPath: string): Promise<RemoteCheck> {
+  const bare = isGithubCache(repoPath)
+  const gitArgs = bare ? ['--git-dir', repoPath] : ['-C', repoPath]
+  const opts = {
+    timeout: 20_000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' },
+  }
+
+  const run = async (args: string[]): Promise<string> =>
+    (await execFileAsync('git', [...gitArgs, ...args], opts)).stdout.trim()
+
+  try {
+    if ((await run(['remote'])).length === 0) {
+      return { behind: false, branch: null, localHead: null, remoteHead: null }
+    }
+
+    let branch: string | null = null
+    try {
+      const b = await run(['rev-parse', '--abbrev-ref', 'HEAD'])
+      branch = b === 'HEAD' ? null : b        // detached HEAD は null
+    } catch { /* 参照が取れないリポジトリもある */ }
+
+    const localHead = await run(['rev-parse', 'HEAD'])
+
+    // 現在のブランチに対応するリモート参照を見る。
+    // 常に remote HEAD と比べると、別ブランチに居るだけで「新着あり」に化ける。
+    const lsArgs = branch ? ['ls-remote', 'origin', `refs/heads/${branch}`] : ['ls-remote', 'origin', 'HEAD']
+    const line = (await run(lsArgs)).split('\n')[0] ?? ''
+    const remoteHead = line.split(/\s+/)[0] || null
+
+    if (!remoteHead) return { behind: false, branch, localHead, remoteHead: null }
+
+    if (remoteHead === localHead) return { behind: false, branch, localHead, remoteHead }
+
+    // 「オブジェクトを持っているか」では判定できない。
+    // 一度 fetch した後に reset した場合など、オブジェクトは残ったまま
+    // 履歴には入っていないことがあり、それを「取り込み済み」と誤判定する（実測）。
+    // 手元の HEAD から辿り着けるかどうかで見る。
+    let reachable = false
+    try {
+      await run(['merge-base', '--is-ancestor', remoteHead, 'HEAD'])
+      reachable = true
+    } catch {
+      reachable = false   // 到達不能、またはオブジェクトが無い
+    }
+
+    return { behind: !reachable, branch, localHead, remoteHead }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return {
+      behind: false, branch: null, localHead: null, remoteHead: null,
+      error: msg.split('\n')[0].slice(0, 200),
+    }
+  }
+}
+
 // ---- GitHub REST API ステータス取得 ----
 
 export interface RepoStatus {

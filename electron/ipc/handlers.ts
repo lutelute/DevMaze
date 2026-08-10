@@ -6,7 +6,7 @@ import { analyzeRepo } from '../../shared/analyzer/index'
 import { buildReport } from '../../shared/analyzer/report'
 import type { AnalysisResult } from '../../shared/types'
 import { loadCache, saveCache } from './cache'
-import { ensureGithubRepo, fetchRepoStatus, fetchLatest } from './github'
+import { ensureGithubRepo, fetchRepoStatus, fetchLatest, checkRemote } from './github'
 import { startWatcher, stopWatcher } from './watcher'
 
 const RECENT_REPOS_PATH = path.join(app.getPath('userData'), 'recent-repos.json')
@@ -132,6 +132,11 @@ export function setupIpcHandlers() {
     } catch (err: unknown) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // リモートに新着があるかだけを見る（取り込みはしない）
+  ipcMain.handle('repo:checkRemote', async (_event, repoPath: string) => {
+    return checkRemote(repoPath)
   })
 
   // 開発過程を Markdown に書き出す（資産として持ち出すための口）

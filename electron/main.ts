@@ -4,6 +4,13 @@ import { setupIpcHandlers } from './ipc/handlers'
 
 let mainWindow: BrowserWindow | null = null
 
+// 開発時だけ CDP を開ける。
+// UI の検証を「見た目のスクリーンショット」だけで済ませていると、
+// クリックしないと分からない不具合（押しても何も起きない等）が残り続ける。
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.DEVMAZE_CDP_PORT ?? '9222')
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,

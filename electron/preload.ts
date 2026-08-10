@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   refreshRepo: (repoPath: string): Promise<unknown> =>
     ipcRenderer.invoke('repo:refresh', repoPath),
 
+  checkRemote: (repoPath: string): Promise<unknown> =>
+    ipcRenderer.invoke('repo:checkRemote', repoPath),
+
   openExternal: (url: string): Promise<unknown> =>
     ipcRenderer.invoke('shell:openExternal', url),
 

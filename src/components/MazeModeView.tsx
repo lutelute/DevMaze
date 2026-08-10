@@ -88,7 +88,7 @@ export default function MazeModeView({
   }, [nodes.length])
 
   /* ── 4. auto-fit ─────────────────────────────── */
-  useEffect(() => {
+  const fit = useCallback(() => {
     const el = containerRef.current
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
@@ -97,6 +97,23 @@ export default function MazeModeView({
     setScale(s)
     setPan({ x: (width - canvasW * s) / 2, y: (height - canvasH * s) / 2 })
   }, [canvasW, canvasH])
+
+  useEffect(() => { fit() }, [fit])
+
+  // 画面中央を軸に拡大縮小する（ボタン操作でも中心がずれないように）
+  const zoomBy = useCallback((factor: number) => {
+    const el = containerRef.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    setScale(prev => {
+      const next = Math.max(0.2, Math.min(3, prev * factor))
+      setPan(p => ({
+        x: width / 2 - ((width / 2 - p.x) / prev) * next,
+        y: height / 2 - ((height / 2 - p.y) / prev) * next,
+      }))
+      return next
+    })
+  }, [])
 
   /* ── 5. interaction ─────────────────────────── */
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -239,6 +256,43 @@ export default function MazeModeView({
           })}
         </g>
       </svg>
+
+      {/* ズーム操作（Graph ビューと同じ位置・同じ操作にそろえる） */}
+      <div style={{
+        position: 'absolute', left: 14, bottom: 14,
+        display: 'flex', alignItems: 'center', gap: 4,
+        background: 'rgba(26,17,7,0.88)', backdropFilter: 'blur(8px)',
+        border: '1px solid var(--border)', borderRadius: 8, padding: '4px 6px',
+      }}>
+        {[
+          { label: '−', title: '縮小', onClick: () => zoomBy(1 / 1.4) },
+          { label: '＋', title: '拡大', onClick: () => zoomBy(1.4) },
+          { label: '⤢', title: '全体を表示', onClick: fit },
+        ].map((b, i) => (
+          <span key={b.label} style={{ display: 'flex', alignItems: 'center' }}>
+            {i === 2 && <span style={{ width: 1, height: 14, background: 'var(--border)', margin: '0 3px' }} />}
+            {i === 1 && (
+              <span style={{
+                minWidth: 42, textAlign: 'center', fontSize: 10.5,
+                color: 'var(--text-secondary)', fontFamily: 'monospace',
+              }}>
+                {Math.round(scale * 100)}%
+              </span>
+            )}
+            <button
+              onClick={b.onClick}
+              title={b.title}
+              style={{
+                background: 'transparent', border: '1px solid var(--border)', borderRadius: 5,
+                width: 22, height: 22, cursor: 'pointer', color: 'var(--text-secondary)',
+                fontSize: 12, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {b.label}
+            </button>
+          </span>
+        ))}
+      </div>
 
       {/* info bar */}
       <div style={{

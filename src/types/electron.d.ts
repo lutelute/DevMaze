@@ -11,6 +11,14 @@ export interface RepoStatus {
 
 type GithubStatusResponse = { ok: true; data: RepoStatus } | { ok: false; error: string }
 
+export interface RemoteCheck {
+  behind: boolean
+  branch: string | null
+  localHead: string | null
+  remoteHead: string | null
+  error?: string
+}
+
 export interface FetchResult {
   fetched: boolean
   newCommits: number
@@ -28,6 +36,7 @@ interface ElectronAPI {
   getRecentRepos: () => Promise<string[]>
   exportReport: (repoPath: string) => Promise<{ ok: true; path: string } | { ok: false; error: string }>
   refreshRepo: (repoPath: string) => Promise<RefreshResponse>
+  checkRemote: (repoPath: string) => Promise<RemoteCheck>
   openExternal: (url: string) => Promise<unknown>
   onProgress: (callback: (msg: string) => void) => () => void
   getInitialRepo: () => Promise<string | null>
