@@ -179,13 +179,25 @@ interface Layout {
   height: number
 }
 
-function buildLayout(axis: TimeAxis, maxLane: number, viewportW: number, aggregated = false): Layout {
-  // 1行の長さは画面幅にそろえる（1行 ≒ 1画面ぶん）
-  const rowW = Math.max(760, Math.min(1700, viewportW - 190))
+function buildLayout(
+  axis: TimeAxis, maxLane: number, viewportW: number, viewportH: number, aggregated = false,
+): Layout {
   const laneGap = aggregated ? 40 : 46
   // コミット表示は塊が縦に膨らむので余白を厚く、まとまり表示は薄くて足りる
   const rowH = (maxLane * 2 + 1) * laneGap + (aggregated ? 58 : 130)
-  const rows = Math.max(1, Math.ceil(axis.total / rowW))
+
+  // 行の長さを画面幅に固定すると、行数が増えて縦に長くなり、
+  // 全体表示のときに縮尺が縦で頭打ちになる（実測: 9行で48%）。
+  // 行数を変えながら「いちばん大きく映せる分け方」を選ぶ。横長の行も許す。
+  let rows = 1
+  let rowW = axis.total
+  let bestScale = -1
+  for (let r = 1; r <= 16; r++) {
+    const w = Math.max(560, axis.total / r)
+    const h = r * rowH
+    const scale = Math.min((viewportW - 150) / (w + 120), (viewportH - 90) / (h + 60))
+    if (scale > bestScale) { bestScale = scale; rows = r; rowW = w }
+  }
 
   const place = (ax: number) => {
     const row = Math.min(rows - 1, Math.floor(ax / rowW))
@@ -385,7 +397,7 @@ export default function MazeGraph({
     const laneIndex = compactLanes(nodes.map(n => n.lane), aggregated ? 1 : 3)
     const laneOf = (lane: number) => laneIndex.get(lane) ?? 0
     const maxLane = Math.max(1, ...[...laneIndex.values()].map(Math.abs))
-    const layout = buildLayout(axis, maxLane, W, aggregated)
+    const layout = buildLayout(axis, maxLane, W, H, aggregated)
     layoutRef.current = layout
     nodesRef.current = nodes
 
@@ -617,6 +629,23 @@ export default function MazeGraph({
           .text(label)
       })
 
+    if (aggregated) {
+      nodeElems.filter(d => d.tagNames.length === 0)
+        .append('text')
+        .attr('class', 'commit-label')
+        .attr('dy', d => nodeRadius(d) + 13)
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'var(--text-dim)')
+        .attr('font-size', 8.5)
+        .attr('font-family', 'JetBrains Mono, monospace')
+        .attr('pointer-events', 'none')
+        .attr('opacity', 0)
+        .text(d => {
+          const dt = new Date(d.timestamp)
+          return `${dt.getMonth() + 1}/${dt.getDate()}`
+        })
+    }
+
     nodeElems.filter(d => d.milestoneReason === 'large_change')
       .append('text')
       .attr('text-anchor', 'middle')
@@ -639,7 +668,9 @@ export default function MazeGraph({
       .text(d => d.label)
 
     nodeElems
-      .filter(d => d.type === 'merge' || d.type === 'release' || d.tagNames.length > 0)
+      // まとまり表示では上のタグ札と同じ内容になるので出さない（二重に見える）
+      .filter(d => !aggregated &&
+        (d.type === 'merge' || d.type === 'release' || d.tagNames.length > 0))
       .append('text')
       .attr('class', 'commit-label')
       .attr('dy', d => nodeRadius(d) + 22)
