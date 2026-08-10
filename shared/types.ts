@@ -28,6 +28,37 @@ export interface CommitNode {
   branchNames: string[]
   tagNames: string[]
   revertedHash?: string
+  files: string[]          // このコミットが触ったファイル（マージコミットは空）
+}
+
+// ===== Struggle (沼) — 開発過程で詰まった箇所 =====
+export type StruggleKind =
+  | 'revert_loop'   // やり直しの輪: revert とその周辺で同じ場所を往復
+  | 'fix_chain'     // 修正の連鎖: 短期間に fix が続く
+  | 'file_churn'    // 同じファイルの往復: 特定ファイルを短期間に何度も書き直す
+  | 'wip_drift'     // WIP の漂流: 未完成コミットが続く
+  | 'stall_burst'   // 停滞のあとの一気書き: 長い空白の直後に修正/大量変更
+
+export interface StruggleCommitRef {
+  hash: string
+  shortHash: string
+  message: string
+  type: CommitType
+  timestamp: number
+}
+
+export interface StruggleEpisode {
+  id: string
+  kind: StruggleKind
+  title: string                 // 「〜で詰まった」形式の一行
+  severity: number              // 0-100（深刻度）
+  startTimestamp: number
+  endTimestamp: number
+  durationHours: number
+  commits: StruggleCommitRef[]
+  files: { path: string; touches: number }[]
+  escape?: StruggleCommitRef    // 沼を抜けた（と思われる）最後のコミット
+  evidence: string[]            // 判定の数値的根拠（人間/エージェントが再判断できるように）
 }
 
 // ===== Development Zone (time-based phase) =====
@@ -48,6 +79,21 @@ export interface LaneInfo {
   theme: CommitType     // 支配的なコミットタイプ
 }
 
+// ===== File Hotspot（荒れている場所） =====
+export interface FileHotspot {
+  path: string
+  commits: number        // このファイルを変更したコミット数
+  fixCommits: number     // うち修正・やり直し
+  fixRatio: number       // 0-1
+  authors: number
+  insertions: number     // コミット単位の値をファイル数で按分した概算
+  deletions: number
+  firstTouched: number
+  lastTouched: number
+  risk: number           // 0-100
+  reasons: string[]
+}
+
 // ===== Graph Node (for D3) =====
 export interface MazeNode {
   id: string
@@ -61,6 +107,7 @@ export interface MazeNode {
   message: string
   branchNames: string[]
   tagNames: string[]
+  files: string[]
   isMainBranch: boolean
   lane: number
   isMilestone: boolean
@@ -110,6 +157,8 @@ export interface AnalysisResult {
   repoName: string
   graph: MazeGraph
   score: TrialScore
+  struggles: StruggleEpisode[]
+  hotspots: FileHotspot[]
   stats: {
     totalCommits: number
     authors: string[]
@@ -119,6 +168,9 @@ export interface AnalysisResult {
     revertCount: number
     errorFixCount: number
     wipCount: number
+    // ファイル単位の差分を取得できたコミットの割合（0-1）。
+    // shallow clone やオブジェクト欠損のリポジトリでは下がり、沼検出の精度も落ちる。
+    fileStatsCoverage: number
   }
   summary: string
 }

@@ -1,23 +1,36 @@
 import { analyzeGitRepo } from './git'
 import { calculateScore, generateSummary } from './score'
 import { buildMazeGraph, getRepoName } from './graph'
+import { detectStruggles } from './struggle'
+import { detectHotspots } from './hotspot'
 import type { AnalysisResult } from '../types'
 
 export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
   const commits = await analyzeGitRepo(repoPath)
   const graph = buildMazeGraph(commits)
   const score = calculateScore(commits)
+  const struggles = detectStruggles(commits)
+  const hotspots = detectHotspots(commits)
   const repoName = getRepoName(repoPath)
   const summary = generateSummary(commits, score, repoName)
 
   const authors = [...new Set(commits.map(c => c.authorName))]
   const sorted = [...commits].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
 
+  // マージコミットは numstat が空なので分母から外す
+  const diffable = commits.filter(c => c.type !== 'merge')
+  const withFiles = diffable.filter(c => c.files.length > 0).length
+  const fileStatsCoverage = diffable.length === 0
+    ? 0
+    : Math.round((withFiles / diffable.length) * 100) / 100
+
   return {
     repoPath,
     repoName,
     graph,
     score,
+    struggles,
+    hotspots,
     stats: {
       totalCommits: commits.length,
       authors,
@@ -30,6 +43,7 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
       revertCount: commits.filter(c => c.type === 'revert').length,
       errorFixCount: commits.filter(c => c.type === 'error_fix').length,
       wipCount:    commits.filter(c => c.type === 'wip').length,
+      fileStatsCoverage,
     },
     summary,
   }
@@ -38,3 +52,5 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
 export { analyzeGitRepo } from './git'
 export { calculateScore, generateSummary } from './score'
 export { buildMazeGraph, getRepoName } from './graph'
+export { detectStruggles, formatStruggles, struggleKindLabel } from './struggle'
+export { detectHotspots, formatHotspots } from './hotspot'

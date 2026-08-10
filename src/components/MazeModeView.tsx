@@ -13,6 +13,10 @@ interface Props {
   filterTypes: Set<string>
   onNodeClick: (node: MazeNode) => void
   selectedNodeId?: string
+  /** 沼エピソードに属するコミット。指定すると他のノードを沈める */
+  highlightIds?: Set<string>
+  /** 何らかの沼に属するコミット全体。常時マーカーを出す */
+  struggleIds?: Set<string>
 }
 
 /* ── constants ─────────────────────────────────── */
@@ -38,7 +42,10 @@ const TYPE_COLOR: Record<CommitType, string> = {
 }
 
 /* ── component ─────────────────────────────────── */
-export default function MazeModeView({ graph, filterTypes, onNodeClick, selectedNodeId }: Props) {
+export default function MazeModeView({
+  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds,
+}: Props) {
+  const dimming = !!highlightIds && highlightIds.size > 0
   const containerRef = useRef<HTMLDivElement>(null)
   const [pan,   setPan]   = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
@@ -192,9 +199,16 @@ export default function MazeModeView({ graph, filterTypes, onNodeClick, selected
             const c    = TYPE_COLOR[n.type] ?? '#D4A84A'
             const sel  = n.id === selectedNodeId
             const main = n.isMainBranch
+            const inStruggle = dimming && highlightIds!.has(n.id)
             return (
               <g key={n.id} transform={`translate(${p.x},${p.y})`}
-                onClick={() => onNodeClick(n)} style={{ cursor: 'pointer' }}>
+                onClick={() => onNodeClick(n)} style={{ cursor: 'pointer' }}
+                opacity={!dimming || inStruggle ? 1 : 0.15}>
+                {inStruggle && <circle r={R + 8} fill="#C0624B" opacity={0.18} />}
+                {struggleIds?.has(n.id) && (
+                  <circle r={R + 5} fill="none" stroke="#C0624B" strokeWidth={1.2}
+                    strokeDasharray="2,2.5" opacity={0.55} />
+                )}
                 {main && <circle r={R + 7} fill={c} opacity={0.06} />}
                 {sel  && <circle r={R + 4} fill="none" stroke={c} strokeWidth={2} opacity={0.85} />}
                 <circle r={main ? R + 2 : R}

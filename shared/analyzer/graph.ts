@@ -260,6 +260,7 @@ export function buildMazeGraph(commits: CommitNode[]): MazeGraph {
       message: c.message,
       branchNames: c.branchNames,
       tagNames: c.tagNames,
+      files: c.files,
       isMainBranch: mainHashes.has(c.hash),
       lane: laneMap.get(c.hash) ?? 0,
       isMilestone: milestoneMap.has(c.hash),

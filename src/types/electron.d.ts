@@ -16,6 +16,7 @@ interface ElectronAPI {
   analyzeRepo: (repoPath: string, forceRefresh?: boolean) => Promise<AnalyzeResponse>
   openGithubRepo: (input: string) => Promise<AnalyzeResponse>
   getRecentRepos: () => Promise<string[]>
+  exportReport: (repoPath: string) => Promise<{ ok: true; path: string } | { ok: false; error: string }>
   onProgress: (callback: (msg: string) => void) => () => void
   getInitialRepo: () => Promise<string | null>
   getGithubStatus: (owner: string, name: string) => Promise<GithubStatusResponse>

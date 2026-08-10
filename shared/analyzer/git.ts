@@ -1,7 +1,20 @@
 import simpleGit, { SimpleGit, type DefaultLogFields } from 'simple-git'
 import type { CommitNode, CommitType } from '../types'
 
-function classifyCommit(message: string, parentCount: number): CommitType {
+/**
+ * 件名を主、本文を従として分類する。
+ * 本文には変更点の箇条書き（"- fix ...", "- add ..."）が並ぶことが多く、
+ * 件名と本文を混ぜて判定すると、たとえば初回リリースコミットが
+ * 「バグ修正」に化ける。本文は件名で決まらなかったときの補助にとどめる。
+ */
+export function classifyCommit(subject: string, body: string, parentCount: number): CommitType {
+  if (parentCount >= 2) return 'merge'
+  const bySubject = classifyText(subject, parentCount)
+  if (bySubject !== 'normal') return bySubject
+  return classifyText(body, parentCount)
+}
+
+function classifyText(message: string, parentCount: number): CommitType {
   const msg = message.toLowerCase()
   if (parentCount >= 2) return 'merge'
   if (msg.startsWith('revert ') || /^revert\b/.test(msg)) return 'revert'
@@ -102,7 +115,6 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
     const parentHashes = parentMap.get(entry.hash) ?? []
     const refs = refMap.get(entry.hash) ?? { branches: [], tags: [] }
     const body = bodyMap.get(entry.hash) ?? ''
-    const fullMsg = entry.message + ' ' + body
 
     commits.push({
       hash: entry.hash,
@@ -115,10 +127,11 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
       filesChanged: 0,
       insertions: 0,
       deletions: 0,
-      type: classifyCommit(fullMsg, parentHashes.length),
+      type: classifyCommit(entry.message, body, parentHashes.length),
       branchNames: refs.branches,
       tagNames: refs.tags,
       revertedHash: undefined,
+      files: [],
     })
   }
 
@@ -136,39 +149,104 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
   return commits
 }
 
+// リネーム表記を新しいパスに正規化する
+//   "src/{old.ts => new.ts}"  → "src/new.ts"
+//   "old/a.ts => new/a.ts"    → "new/a.ts"
+function normalizeRenamePath(raw: string): string {
+  const path = raw.trim()
+  const brace = path.match(/^(.*)\{(.*) => (.*)\}(.*)$/)
+  if (brace) {
+    const [, prefix, , to, suffix] = brace
+    return (prefix + to + suffix).replace(/\/{2,}/g, '/')
+  }
+  const arrow = path.split(' => ')
+  return (arrow.length === 2 ? arrow[1] : path).trim()
+}
+
+// 1コミットあたりに保持するファイル名の上限（巨大コミットでのメモリ肥大を防ぐ）
+const MAX_FILES_PER_COMMIT = 200
+
+/** git が途中で失敗したときに、例外に含まれる標準出力の断片を取り出す */
+export function salvagePartialOutput(err: unknown): string {
+  const e = err as { stdOut?: unknown; message?: unknown } | null
+  const buf = e?.stdOut
+  if (typeof buf === 'string' && buf.length > 0) return buf
+  if (buf && typeof (buf as Buffer).toString === 'function') {
+    const s = (buf as Buffer).toString('utf-8')
+    if (s.length > 0) return s
+  }
+  const msg = typeof e?.message === 'string' ? e.message : ''
+  // simple-git は stdout をそのまま message に載せてくることがある。
+  // numstat の行（"<数字|-> TAB <数字|-> TAB <path>"）が含まれていれば使える。
+  return /^[\d-]+\t[\d-]+\t/m.test(msg) ? msg : ''
+}
+
+export interface NumstatEntry {
+  filesChanged: number
+  insertions: number
+  deletions: number
+  files: string[]
+}
+
+/**
+ * `git log --format=%H --numstat` の出力を解析する。
+ * 途中で切れた出力（オブジェクト欠損で git が落ちた場合）でも、
+ * 読めたところまでを返す。
+ */
+export function parseNumstat(raw: string): Map<string, NumstatEntry> {
+  const statsMap = new Map<string, NumstatEntry>()
+  let current: NumstatEntry | null = null
+
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    if (/^[0-9a-f]{40}$/.test(trimmed)) {
+      current = { filesChanged: 0, insertions: 0, deletions: 0, files: [] }
+      statsMap.set(trimmed, current)
+      continue
+    }
+
+    if (!current) continue
+
+    // "<insertions>\t<deletions>\t<path>"（バイナリは "-\t-\t<path>"）
+    const parts = line.split('\t')
+    if (parts.length < 3) continue
+    const ins = parseInt(parts[0], 10)
+    const del = parseInt(parts[1], 10)
+    current.filesChanged += 1
+    current.insertions += Number.isNaN(ins) ? 0 : ins
+    current.deletions  += Number.isNaN(del) ? 0 : del
+    if (current.files.length < MAX_FILES_PER_COMMIT) {
+      current.files.push(normalizeRenamePath(parts.slice(2).join('\t')))
+    }
+  }
+
+  return statsMap
+}
+
 async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
   let rawStats: string
   try {
+    // numstat はファイル単位の増減行を返す。shortstat と違いファイル名が取れるため、
+    // 沼（同じファイルの往復）検出に使える。
     rawStats = await git.raw([
       'log', '--all',
       '--format=%H',
-      '--shortstat',
+      '--numstat',
       '--max-count=1000',
     ])
-  } catch {
-    // shallow clone (--depth) や --filter=blob:none の場合、境界コミットで
-    // object が存在しないエラーが起きることがある。stats なしで続行する。
-    return
+  } catch (err) {
+    // shallow clone (--depth)・--filter=blob:none・オブジェクト欠損のリポジトリでは、
+    // git が途中の "fatal: unable to read <sha>" で終了し、simple-git が例外を投げる。
+    // このとき既に出力されていた分は例外メッセージの中に残っているので拾い直す。
+    // 捨ててしまうと全コミットの stats が 0 になり、ファイル単位の検出（沼）が
+    // 「検出なし」に化けて、見た目には正常に見えてしまう。
+    rawStats = salvagePartialOutput(err)
+    if (!rawStats) return
   }
 
-  const statsMap = new Map<string, { filesChanged: number; insertions: number; deletions: number }>()
-  let currentHash = ''
-
-  for (const line of rawStats.split('\n')) {
-    const trimmed = line.trim()
-    if (/^[0-9a-f]{40}$/.test(trimmed)) {
-      currentHash = trimmed
-    } else if (currentHash && trimmed.includes('changed')) {
-      const filesMatch = trimmed.match(/(\d+) files? changed/)
-      const insMatch   = trimmed.match(/(\d+) insertion/)
-      const delMatch   = trimmed.match(/(\d+) deletion/)
-      statsMap.set(currentHash, {
-        filesChanged: filesMatch ? parseInt(filesMatch[1]) : 0,
-        insertions:   insMatch   ? parseInt(insMatch[1])   : 0,
-        deletions:    delMatch   ? parseInt(delMatch[1])   : 0,
-      })
-    }
-  }
+  const statsMap = parseNumstat(rawStats)
 
   for (const c of commits) {
     const s = statsMap.get(c.hash)
@@ -176,6 +254,7 @@ async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
       c.filesChanged = s.filesChanged
       c.insertions   = s.insertions
       c.deletions    = s.deletions
+      c.files        = s.files
     }
   }
 }

@@ -8,6 +8,7 @@ interface Props {
   onOpenGithub: (input: string) => void
   onRecentRepo: (path: string) => void
   onRefresh?: () => void
+  onExportReport?: () => void
   recentRepos: string[]
   fromCache?: boolean
   githubInfo?: { owner: string; name: string } | null
@@ -25,7 +26,8 @@ function parseGithubShorthand(input: string): { owner: string; name: string } | 
 }
 
 export default function Header({
-  repoName, onOpenRepo, onOpenGithub, onRecentRepo, onRefresh, recentRepos, fromCache, githubInfo,
+  repoName, onOpenRepo, onOpenGithub, onRecentRepo, onRefresh, onExportReport,
+  recentRepos, fromCache, githubInfo,
 }: Props) {
   const [showGithub, setShowGithub] = useState(false)
   const [githubInput, setGithubInput] = useState('')
@@ -185,6 +187,19 @@ export default function Header({
           <IconBtn onClick={onRefresh} title="再スキャン">
             <RefreshIcon size={14} color="currentColor" />
           </IconBtn>
+        )}
+
+        {/* 開発過程レポートを Markdown で書き出す */}
+        {repoName && onExportReport && (
+          <TextBtn onClick={onExportReport}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+              strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 1.5H4a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V6z"/>
+              <path d="M9 1.5V6h4.5"/>
+              <path d="M5.5 9h5M5.5 11.5h3"/>
+            </svg>
+            レポート
+          </TextBtn>
         )}
 
         {/* 区切り */}

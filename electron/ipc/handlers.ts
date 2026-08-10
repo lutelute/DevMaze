@@ -3,6 +3,8 @@ import path from 'path'
 import fs from 'fs'
 import simpleGit from 'simple-git'
 import { analyzeRepo } from '../../shared/analyzer/index'
+import { buildReport } from '../../shared/analyzer/report'
+import type { AnalysisResult } from '../../shared/types'
 import { loadCache, saveCache } from './cache'
 import { ensureGithubRepo, fetchRepoStatus } from './github'
 import { startWatcher, stopWatcher } from './watcher'
@@ -107,6 +109,30 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('repo:getRecent', () => {
     return loadRecentRepos()
+  })
+
+  // 開発過程を Markdown に書き出す（資産として持ち出すための口）
+  ipcMain.handle('report:export', async (_event, repoPath: string) => {
+    try {
+      const analysis = await analyzeWithCache(repoPath, false, () => {})
+      if (!analysis.ok) return analysis
+
+      const result = analysis.data as AnalysisResult
+      const markdown = buildReport(result)
+
+      const stamp = new Date().toISOString().slice(0, 10)
+      const save = await dialog.showSaveDialog({
+        title: 'レポートを保存',
+        defaultPath: path.join(app.getPath('downloads'), `${result.repoName}-devmaze-${stamp}.md`),
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      if (save.canceled || !save.filePath) return { ok: false, error: 'canceled' }
+
+      fs.writeFileSync(save.filePath, markdown, 'utf-8')
+      return { ok: true, path: save.filePath }
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle('github:getStatus', async (_event, owner: string, name: string) => {

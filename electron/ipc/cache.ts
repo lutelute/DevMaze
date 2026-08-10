@@ -4,7 +4,8 @@ import crypto from 'crypto'
 import { app } from 'electron'
 import type { AnalysisResult } from '../../shared/types'
 
-const CACHE_VERSION = 1
+// 2: struggles（沼エピソード）を AnalysisResult に追加
+const CACHE_VERSION = 2
 
 interface CacheEntry {
   version: number

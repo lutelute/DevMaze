@@ -1,8 +1,21 @@
-import type { MazeNode, CommitType } from '../../shared/types'
+import type { MazeNode, CommitType, StruggleEpisode, FileHotspot } from '../../shared/types'
 
 interface Props {
   node: MazeNode
   onClose: () => void
+  /** このコミットが属する沼エピソード */
+  struggles?: StruggleEpisode[]
+  /** リポジトリ全体のホットスポット（変更ファイルに risk を添えるのに使う） */
+  hotspots?: FileHotspot[]
+  onSelectStruggle?: (episode: StruggleEpisode) => void
+}
+
+const STRUGGLE_LABEL: Record<StruggleEpisode['kind'], string> = {
+  revert_loop: 'やり直しの輪',
+  fix_chain:   '修正の連鎖',
+  file_churn:  '同じファイルの往復',
+  wip_drift:   'WIP の漂流',
+  stall_burst: '停滞のあとの再開',
 }
 
 const TYPE_LABELS: Record<CommitType, { label: string; color: string }> = {
@@ -19,9 +32,10 @@ const TYPE_LABELS: Record<CommitType, { label: string; color: string }> = {
   test:      { label: 'テスト',           color: '#6AAF9E' },
 }
 
-export default function NodeDetail({ node, onClose }: Props) {
+export default function NodeDetail({ node, onClose, struggles = [], hotspots = [], onSelectStruggle }: Props) {
   const meta = TYPE_LABELS[node.type]
   const date = new Date(node.timestamp)
+  const riskByPath = new Map(hotspots.map(h => [h.path, h.risk]))
 
   return (
     <aside style={{
@@ -102,6 +116,69 @@ export default function NodeDetail({ node, onClose }: Props) {
               <StatBadge value={node.filesChanged} label="files" color="#94A3B8" />
               <StatBadge value={node.insertions}   label="+lines" color="#10B981" />
               <StatBadge value={node.deletions}    label="-lines" color="#EF4444" />
+            </div>
+          </div>
+        )}
+
+        {/* 沼バッジ */}
+        {struggles.length > 0 && (
+          <div>
+            <Label>このコミットが属する沼</Label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {struggles.map(e => (
+                <button
+                  key={e.id}
+                  onClick={() => onSelectStruggle?.(e)}
+                  style={{
+                    textAlign: 'left', background: 'rgba(192,98,75,0.12)',
+                    border: '1px solid rgba(192,98,75,0.35)', borderRadius: 6,
+                    padding: '6px 8px', cursor: onSelectStruggle ? 'pointer' : 'default',
+                  }}
+                >
+                  <div style={{ fontSize: 11.5, color: '#E0A090', lineHeight: 1.35 }}>{e.title}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                    {STRUGGLE_LABEL[e.kind]} · 深刻度 {e.severity} · {e.commits.length}コミット
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 変更ファイル */}
+        {node.files.length > 0 && (
+          <div>
+            <Label>変更ファイル（{node.files.length}）</Label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
+              {node.files.slice(0, 60).map(f => {
+                const risk = riskByPath.get(f)
+                return (
+                  <div key={f} title={f} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)',
+                    padding: '2px 0',
+                  }}>
+                    <span style={{
+                      flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left',
+                    }}>
+                      {f}
+                    </span>
+                    {risk !== undefined && (
+                      <span title={`ホットスポット risk ${risk}`} style={{
+                        flexShrink: 0, fontSize: 9.5, color: risk >= 50 ? '#C0624B' : '#C88B3A',
+                        background: risk >= 50 ? 'rgba(192,98,75,0.15)' : 'rgba(200,139,58,0.12)',
+                        padding: '1px 5px', borderRadius: 4,
+                      }}>
+                        risk {risk}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+              {node.files.length > 60 && (
+                <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>… 他 {node.files.length - 60} 件</div>
+              )}
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-import type { AnalysisResult, CommitType } from '../../shared/types'
+import type { AnalysisResult, CommitType, StruggleEpisode, StruggleKind } from '../../shared/types'
 import ScoreCard from './ScoreCard'
 
 interface Props {
@@ -8,6 +8,8 @@ interface Props {
   recentRepos: string[]
   currentRepoPath: string | null
   onOpenRecent: (path: string) => void
+  selectedStruggleId?: string
+  onSelectStruggle: (episode: StruggleEpisode | null) => void
 }
 
 const TYPE_META: Record<CommitType, { label: string; color: string }> = {
@@ -47,9 +49,25 @@ function isGithubBare(repoPath: string): boolean {
   return repoPath.includes('github-repos')
 }
 
+const STRUGGLE_META: Record<StruggleKind, { label: string; icon: string }> = {
+  revert_loop: { label: 'やり直しの輪',       icon: '↩︎' },
+  fix_chain:   { label: '修正の連鎖',         icon: '🔧' },
+  file_churn:  { label: '同じファイルの往復', icon: '🌀' },
+  wip_drift:   { label: 'WIP の漂流',         icon: '⋯'  },
+  stall_burst: { label: '停滞のあとの再開',   icon: '⏸'  },
+}
+
+function severityColor(severity: number): string {
+  if (severity >= 75) return '#C0624B'
+  if (severity >= 50) return '#C88B3A'
+  if (severity >= 30) return '#D4A84A'
+  return '#8B7355'
+}
+
 export default function Sidebar({
   result, filterTypes, onFilterChange,
   recentRepos, currentRepoPath, onOpenRecent,
+  selectedStruggleId, onSelectStruggle,
 }: Props) {
   const toggleFilter = (type: string) => {
     const next = new Set(filterTypes)
@@ -59,6 +77,7 @@ export default function Sidebar({
   }
 
   const zones = result?.graph.zones ?? []
+  const struggles = result?.struggles ?? []
 
   return (
     <aside style={{
@@ -157,6 +176,67 @@ export default function Sidebar({
                 </button>
               )
             })}
+          </Section>
+        )}
+
+        {/* 沼（詰まった箇所） */}
+        {result && (
+          <Section title={`沼 ${struggles.length > 0 ? `(${struggles.length})` : ''}`}>
+            {struggles.length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5, padding: '2px 0' }}>
+                検出なし。
+                {result.stats.fileStatsCoverage < 0.5 && (
+                  <span style={{ color: '#C88B3A' }}>
+                    {' '}ただしファイル差分が {Math.round(result.stats.fileStatsCoverage * 100)}% しか取得できていません（shallow clone）。
+                  </span>
+                )}
+              </div>
+            )}
+            {struggles.slice(0, 8).map(e => {
+              const active = e.id === selectedStruggleId
+              const color = severityColor(e.severity)
+              const meta = STRUGGLE_META[e.kind]
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => onSelectStruggle(active ? null : e)}
+                  title={`${meta.label} / 深刻度 ${e.severity} / ${e.commits.length}コミット\n${e.evidence.join('\n')}`}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 6,
+                    width: '100%', textAlign: 'left',
+                    background: active ? `${color}20` : 'none',
+                    border: `1px solid ${active ? `${color}70` : 'transparent'}`,
+                    borderRadius: 6, padding: '5px 7px', cursor: 'pointer',
+                    transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={e2 => { if (!active) e2.currentTarget.style.background = `${color}12` }}
+                  onMouseLeave={e2 => { if (!active) e2.currentTarget.style.background = 'none' }}
+                >
+                  <span style={{ fontSize: 10, color, flexShrink: 0, marginTop: 1 }}>{meta.icon}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{
+                      display: 'block', fontSize: 11, lineHeight: 1.35,
+                      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {e.title}
+                    </span>
+                    <span style={{ display: 'block', fontSize: 9.5, color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                      {meta.label} · {e.commits.length}c · {e.severity}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+            {selectedStruggleId && (
+              <button onClick={() => onSelectStruggle(null)} style={{
+                width: '100%', background: 'none', border: 'none',
+                color: 'var(--text-dim)', fontSize: 11, cursor: 'pointer',
+                padding: '4px', marginTop: 2, textAlign: 'center',
+              }}>
+                強調を解除
+              </button>
+            )}
           </Section>
         )}
 

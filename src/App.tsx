@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { AnalysisResult } from '../shared/types'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import MazeGraph from './components/MazeGraph'
 import MazeModeView from './components/MazeModeView'
 import NodeDetail from './components/NodeDetail'
-import type { MazeNode } from '../shared/types'
+import type { MazeNode, StruggleEpisode } from '../shared/types'
 import WelcomeScreen from './components/WelcomeScreen'
 
 type ViewMode = 'graph' | 'maze'
@@ -27,6 +27,8 @@ export default function App() {
   const [currentRepoPath, setCurrentRepoPath] = useState<string | null>(null)
   const [githubInfo, setGithubInfo] = useState<GithubInfo | null>(null)
   const [watchBanner, setWatchBanner] = useState(false)
+  const [struggle, setStruggle] = useState<StruggleEpisode | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -46,6 +48,7 @@ export default function App() {
     setState({ phase: 'loading', progress: '初期化中...' })
     setSelectedNode(null)
     setGithubInfo(null)
+    setStruggle(null)
 
     const result = await window.electronAPI.analyzeRepo(resolved, forceRefresh)
     handleAnalysisResult(resolved, result)
@@ -55,6 +58,7 @@ export default function App() {
     setState({ phase: 'loading', progress: 'GitHubリポジトリを確認中...' })
     setSelectedNode(null)
     setGithubInfo(null)
+    setStruggle(null)
 
     const result = await window.electronAPI.openGithubRepo(input)
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -106,6 +110,45 @@ export default function App() {
   const result = state.phase === 'ready' ? state.result : null
   const fromCache = state.phase === 'ready' ? state.fromCache : false
 
+  // 沼を選ぶと、そのエピソードのコミットだけを迷路上に浮かび上がらせる
+  const highlightIds = useMemo(
+    () => struggle ? new Set(struggle.commits.map(c => c.hash)) : undefined,
+    [struggle],
+  )
+
+  // 沼に属するコミット全体（迷路上に常時マーカーを出す）
+  const struggleNodeIds = useMemo(
+    () => new Set(result?.struggles.flatMap(e => e.commits.map(c => c.hash)) ?? []),
+    [result],
+  )
+
+  const exportReport = useCallback(async () => {
+    if (!currentRepoPath) return
+    setToast('レポートを生成中...')
+    const res = await window.electronAPI.exportReport(currentRepoPath)
+    if (res.ok) setToast(`保存しました: ${res.path}`)
+    else setToast(res.error === 'canceled' ? null : `保存に失敗しました: ${res.error}`)
+  }, [currentRepoPath])
+
+  useEffect(() => {
+    if (!toast || toast.endsWith('中...')) return
+    const t = setTimeout(() => setToast(null), 5000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  // 選択中のコミットが属する沼（詳細パネルに出す）
+  const nodeStruggles = useMemo(() => {
+    if (!result || !selectedNode) return []
+    return result.struggles.filter(e => e.commits.some(c => c.hash === selectedNode.id))
+  }, [result, selectedNode])
+
+  const selectStruggle = useCallback((episode: StruggleEpisode | null) => {
+    setStruggle(episode)
+    if (!episode || !result) return
+    const first = result.graph.nodes.find(n => n.id === episode.commits[0]?.hash)
+    if (first) setSelectedNode(first)
+  }, [result])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-base)' }}>
       <Header
@@ -114,6 +157,7 @@ export default function App() {
         onOpenGithub={openGithubRepo}
         onRecentRepo={openRepo}
         onRefresh={result ? refreshRepo : undefined}
+        onExportReport={result ? exportReport : undefined}
         recentRepos={recentRepos}
         fromCache={fromCache}
         githubInfo={githubInfo}
@@ -159,6 +203,8 @@ export default function App() {
           recentRepos={recentRepos}
           currentRepoPath={currentRepoPath}
           onOpenRecent={openRepo}
+          selectedStruggleId={struggle?.id}
+          onSelectStruggle={selectStruggle}
         />
 
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-base)' }}>
@@ -203,6 +249,8 @@ export default function App() {
                   filterTypes={filterTypes}
                   onNodeClick={setSelectedNode}
                   selectedNodeId={selectedNode?.id}
+                  highlightIds={highlightIds}
+                  struggleIds={struggleNodeIds}
                 />
               ) : (
                 <MazeModeView
@@ -210,14 +258,35 @@ export default function App() {
                   filterTypes={filterTypes}
                   onNodeClick={setSelectedNode}
                   selectedNodeId={selectedNode?.id}
+                  highlightIds={highlightIds}
+                  struggleIds={struggleNodeIds}
                 />
               )}
             </>
           )}
         </div>
 
+        {toast && (
+          <div style={{
+            position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            borderRadius: 8, padding: '9px 16px', zIndex: 500,
+            fontSize: 12, color: 'var(--text-primary)',
+            boxShadow: '0 8px 28px rgba(0,0,0,0.55)', maxWidth: '70vw',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {toast}
+          </div>
+        )}
+
         {selectedNode && (
-          <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
+          <NodeDetail
+            node={selectedNode}
+            onClose={() => setSelectedNode(null)}
+            struggles={nodeStruggles}
+            hotspots={result?.hotspots}
+            onSelectStruggle={selectStruggle}
+          />
         )}
       </div>
     </div>

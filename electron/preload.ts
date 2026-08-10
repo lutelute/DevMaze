@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getRecentRepos: (): Promise<string[]> =>
     ipcRenderer.invoke('repo:getRecent'),
 
+  exportReport: (repoPath: string): Promise<unknown> =>
+    ipcRenderer.invoke('report:export', repoPath),
+
   onProgress: (callback: (msg: string) => void) => {
     const listener = (_: unknown, msg: string) => callback(msg)
     ipcRenderer.on('repo:progress', listener)

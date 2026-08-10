@@ -8,6 +8,10 @@ interface Props {
   filterTypes: Set<string>
   onNodeClick: (node: MazeNode) => void
   selectedNodeId?: string
+  /** 沼エピソードに属するコミット。指定すると他のノードを沈める */
+  highlightIds?: Set<string>
+  /** 何らかの沼に属するコミット全体。常時マーカーを出す */
+  struggleIds?: Set<string>
 }
 
 type D3Node = MazeNode & d3.SimulationNodeDatum
@@ -70,7 +74,9 @@ function hexagon(r: number): string {
 }
 
 // ── Component ──────────────────────────────────────────────
-export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNodeId }: Props) {
+export default function MazeGraph({
+  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
   const nodesRef = useRef<D3Node[]>([])
@@ -395,6 +401,20 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       }
     })
 
+    // 沼マーカー（何らかの沼に属するコミットを破線の輪で囲う）
+    if (struggleIds && struggleIds.size > 0) {
+      nodeElems.filter(d => struggleIds.has(d.id))
+        .append('circle')
+        .attr('class', 'struggle-ring')
+        .attr('r', d => nodeRadius(d) + 4)
+        .attr('fill', 'none')
+        .attr('stroke', '#C0624B')
+        .attr('stroke-width', 1.2)
+        .attr('stroke-dasharray', '2,2.5')
+        .attr('opacity', 0.55)
+        .attr('pointer-events', 'none')
+    }
+
     // Milestone star (★ for tag/version, ⚡ for large_change)
     nodeElems.filter(d => d.isMilestone)
       .append('text')
@@ -500,16 +520,16 @@ export default function MazeGraph({ graph, filterTypes, onNodeClick, selectedNod
       if (!hasFit) { fitView(svg, g, zoom, nodes, W, H); hasFit = true }
     })
 
-    if (selectedNodeId) applyHighlight(nodeElems, selectedNodeId)
+    if (selectedNodeId || highlightIds) applyHighlight(nodeElems, selectedNodeId, highlightIds)
 
     return () => { sim.stop() }
-  }, [nodes, links, handleNodeClick])
+  }, [nodes, links, handleNodeClick, struggleIds])
 
   useEffect(() => {
     if (!svgRef.current) return
     const nodeElems = d3.select(svgRef.current).selectAll<SVGGElement, D3Node>('g.node')
-    applyHighlight(nodeElems, selectedNodeId)
-  }, [selectedNodeId])
+    applyHighlight(nodeElems, selectedNodeId, highlightIds)
+  }, [selectedNodeId, highlightIds])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#1A1107' }}>
@@ -622,9 +642,14 @@ function fitView(
 
 function applyHighlight(
   nodeElems: d3.Selection<SVGGElement, D3Node, SVGGElement, unknown>,
-  selectedId?: string
+  selectedId?: string,
+  highlightIds?: Set<string>
 ) {
-  nodeElems.select('.glow').attr('opacity', (d: D3Node) => d.id === selectedId ? 0.35 : 0)
+  const dimming = !!highlightIds && highlightIds.size > 0
+  nodeElems.attr('opacity', (d: D3Node) =>
+    !dimming || highlightIds!.has(d.id) ? 1 : 0.15)
+  nodeElems.select('.glow').attr('opacity', (d: D3Node) =>
+    d.id === selectedId ? 0.35 : (dimming && highlightIds!.has(d.id) ? 0.2 : 0))
   nodeElems.select('.main-circle')
     .attr('stroke', (d: D3Node) => d.id === selectedId ? '#fff' : TYPE_COLOR[d.type])
     .attr('stroke-width', (d: D3Node) => {
