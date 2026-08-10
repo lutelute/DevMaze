@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import * as d3 from 'd3'
 import type { MazeGraph, MazeNode, MazeEdge, CommitType, Zone } from '../../shared/types'
+import { buildSessions, shouldAggregate } from '../../shared/analyzer/session'
 
 interface Props {
   graph: MazeGraph
@@ -11,9 +12,13 @@ interface Props {
   highlightIds?: Set<string>
   /** 何らかの沼に属するコミット全体。常時マーカーを出す */
   struggleIds?: Set<string>
+  /** まとまりを開いたとき（そのまとまりに属するコミットを強調させる） */
+  onDrillDown?: (hashes: string[]) => void
 }
 
-type D3Node = MazeNode & d3.SimulationNodeDatum
+// まとまり表示のときは、複数コミットを1つのノードとして扱う（count > 1）
+type Aggregatable = MazeNode & { count?: number; memberHashes?: string[] }
+type D3Node = Aggregatable & d3.SimulationNodeDatum
 type D3Link = { id: string; source: D3Node; target: D3Node; type: MazeEdge['type'] }
 
 // ── Color palette (Sand/Earth) ─────────────────────────────
@@ -70,7 +75,14 @@ const STEP_PX = 3         // コミット1件ぶんの基本間隔（ほぼ0に�
 const GAP_K = 24          // 空白時間の効き
 const GAP_MAX = 200       // 1つの空白が占められる最大幅
 
-function buildTimeAxis(timestamps: number[]): TimeAxis {
+interface AxisOptions { step: number; gapK: number; gapMax: number }
+
+// まとまり表示では、1つ1つが大きい塊なので重ねる意味がない。
+// 素直に等間隔で並べ、空白の効きも抑える（そうしないと縦に伸びて全体が読めない）
+const COMMIT_AXIS: AxisOptions  = { step: STEP_PX, gapK: GAP_K, gapMax: GAP_MAX }
+const SESSION_AXIS: AxisOptions = { step: 62, gapK: 8, gapMax: 60 }
+
+function buildTimeAxis(timestamps: number[], opts: AxisOptions = COMMIT_AXIS): TimeAxis {
   const ts = [...new Set(timestamps)].sort((a, b) => a - b)
   if (ts.length === 0) {
     return { pos: () => 0, time: () => 0, total: 1, ticksIn: () => [], gaps: [] }
@@ -81,8 +93,8 @@ function buildTimeAxis(timestamps: number[]): TimeAxis {
 
   for (let i = 1; i < ts.length; i++) {
     const gap = ts[i] - ts[i - 1]
-    const extra = Math.min(GAP_MAX, GAP_K * Math.log1p(gap / HOUR))
-    const x = xs[i - 1] + STEP_PX + extra
+    const extra = Math.min(opts.gapMax, opts.gapK * Math.log1p(gap / HOUR))
+    const x = xs[i - 1] + opts.step + extra
     xs.push(x)
     if (gap >= 3 * DAY) gaps.push({ at: (xs[i - 1] + x) / 2, days: Math.round(gap / DAY) })
   }
@@ -167,12 +179,12 @@ interface Layout {
   height: number
 }
 
-function buildLayout(axis: TimeAxis, maxLane: number, viewportW: number): Layout {
+function buildLayout(axis: TimeAxis, maxLane: number, viewportW: number, aggregated = false): Layout {
   // 1行の長さは画面幅にそろえる（1行 ≒ 1画面ぶん）
   const rowW = Math.max(760, Math.min(1700, viewportW - 190))
-  const laneGap = 46
-  // 塊が縦に膨らむぶんの余白を持たせる
-  const rowH = (maxLane * 2 + 1) * laneGap + 130
+  const laneGap = aggregated ? 40 : 46
+  // コミット表示は塊が縦に膨らむので余白を厚く、まとまり表示は薄くて足りる
+  const rowH = (maxLane * 2 + 1) * laneGap + (aggregated ? 58 : 130)
   const rows = Math.max(1, Math.ceil(axis.total / rowW))
 
   const place = (ax: number) => {
@@ -203,7 +215,26 @@ function buildLayout(axis: TimeAxis, maxLane: number, viewportW: number): Layout
   }
 }
 
+/**
+ * 使われているレーンだけを 0 を中心に詰め直し、外側は畳む。
+ *
+ * 元のレーン番号のまま高さを取ると、枝が9本あるだけで1行が470pxになり、
+ * 全体表示が 19% まで縮んで何も読めなくなる（実測）。
+ * 枝の本数を正確に見せる場ではないので、外側は寄せてしまってよい。
+ */
+function compactLanes(lanes: number[], maxDepth: number): Map<number, number> {
+  const used = [...new Set(lanes)]
+  const below = used.filter(l => l < 0).sort((a, b) => b - a)   // -1, -2, ...
+  const above = used.filter(l => l > 0).sort((a, b) => a - b)   //  1,  2, ...
+  const map = new Map<number, number>([[0, 0]])
+  below.forEach((l, i) => map.set(l, -Math.min(maxDepth, i + 1)))
+  above.forEach((l, i) => map.set(l, Math.min(maxDepth, i + 1)))
+  return map
+}
+
 function nodeRadius(n: D3Node): number {
+  // まとまりは件数で大きさを変える。どこに労力が寄っていたかが形で分かる
+  if (n.count && n.count > 1) return Math.min(30, 9 + Math.sqrt(n.count) * 3.2)
   if (n.type === 'merge')   return 9
   if (n.type === 'release') return 10
   const base = n.isMainBranch ? 8 : 5.5
@@ -225,7 +256,7 @@ const ZONE_LABEL_COLOR = (theme: CommitType) => TYPE_COLOR[theme] ?? '#D4A84A'
 
 // ── Component ──────────────────────────────────────────────
 export default function MazeGraph({
-  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds,
+  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds, onDrillDown,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
@@ -233,14 +264,69 @@ export default function MazeGraph({
   const layoutRef = useRef<Layout | null>(null)
   const [displayLimit, setDisplayLimit] = useState<number>(150)
   const [zoomPct, setZoomPct] = useState(100)
+  // null = 件数に応じて自動で決める（900件を1件ずつ描いても全体は読めない）
+  const [unitOverride, setUnitOverride] = useState<'commit' | 'session' | null>(null)
 
-  const { nodes, links, totalCount } = useMemo(() => {
+  const { nodes, links, totalCount, unit, sessionCount } = useMemo(() => {
     const filtered = filterTypes.size === 0
       ? graph.nodes
       : graph.nodes.filter(n => filterTypes.has(n.type))
 
+    const sessions = buildSessions(filtered)
+    const unit: 'commit' | 'session' =
+      unitOverride ?? (shouldAggregate(filtered.length) ? 'session' : 'commit')
+
+    if (unit === 'session') {
+      // まとまり表示では表示件数の上限をかけない。集約が volume を引き受ける
+      const activeNodes: D3Node[] = sessions.map(ses => ({
+        id: ses.id,
+        label: `${ses.commitCount}`,
+        type: ses.type,
+        timestamp: ses.startTimestamp,
+        filesChanged: ses.fileCount,
+        insertions: ses.insertions,
+        deletions: ses.deletions,
+        authorName: '',
+        message: ses.label,
+        branchNames: [],
+        tagNames: ses.tagNames,
+        files: [],
+        refs: [],
+        isMainBranch: ses.isMainBranch,
+        lane: ses.lane,
+        isMilestone: ses.hasMilestone,
+        milestoneReason: ses.tagNames.length > 0 ? 'tag' : undefined,
+        count: ses.commitCount,
+        memberHashes: ses.commitHashes,
+      })) as D3Node[]
+
+      // まとまり同士は時間順につなぐ（1本の道として読めるように）
+      const activeLinks: D3Link[] = activeNodes.slice(1).map((n, i) => ({
+        id: `ses_${i}`,
+        source: activeNodes[i],
+        target: n,
+        type: 'parent' as const,
+      }))
+
+      return {
+        nodes: activeNodes, links: activeLinks,
+        totalCount: filtered.length, unit, sessionCount: sessions.length,
+      }
+    }
+
     const sorted = [...filtered].sort((a, b) => b.timestamp - a.timestamp)
     const limited = sorted.slice(0, displayLimit)
+
+    // 強調対象は表示件数の外にあっても必ず出す。
+    // これが無いと、古いまとまり・沼・ファイルを開いたとき全部が沈んで
+    // 何も見えない画面になる（実測: 150件表示で 150件すべてが沈んだ）。
+    if (highlightIds && highlightIds.size > 0) {
+      const shown = new Set(limited.map(n => n.id))
+      for (const n of sorted) {
+        if (highlightIds.has(n.id) && !shown.has(n.id)) limited.push(n)
+      }
+    }
+
     const activeNodes: D3Node[] = limited.map(n => ({ ...n })) as D3Node[]
     const byId = new Map(activeNodes.map(n => [n.id, n]))
 
@@ -255,12 +341,21 @@ export default function MazeGraph({
       })
       .filter((l): l is D3Link => l !== null)
 
-    return { nodes: activeNodes, links: activeLinks, totalCount: filtered.length }
-  }, [graph, filterTypes, displayLimit])
+    return {
+      nodes: activeNodes, links: activeLinks,
+      totalCount: filtered.length, unit, sessionCount: sessions.length,
+    }
+  }, [graph, filterTypes, displayLimit, unitOverride, highlightIds])
 
   const handleNodeClick = useCallback((node: D3Node) => {
+    // まとまりをクリックしたら、その中のコミットに降りる（意味的なズーム）
+    if (node.memberHashes && node.memberHashes.length > 0) {
+      setUnitOverride('commit')
+      onDrillDown?.(node.memberHashes)
+      return
+    }
     onNodeClick(node as MazeNode)
-  }, [onNodeClick])
+  }, [onNodeClick, onDrillDown])
 
   const zoomBy = useCallback((factor: number) => {
     if (!svgRef.current || !zoomRef.current) return
@@ -283,9 +378,14 @@ export default function MazeGraph({
     const H = container.clientHeight || 600
     if (nodes.length === 0) return
 
-    const axis = buildTimeAxis(nodes.map(n => n.timestamp))
-    const maxLane = Math.max(1, ...nodes.map(n => Math.abs(n.lane)))
-    const layout = buildLayout(axis, maxLane, W)
+    const aggregated = unit === 'session'
+    const axis = buildTimeAxis(nodes.map(n => n.timestamp), aggregated ? SESSION_AXIS : COMMIT_AXIS)
+
+    // 俯瞰では枝を ±1 に畳む（道として読ませたい）。コミット表示は ±3 まで残す
+    const laneIndex = compactLanes(nodes.map(n => n.lane), aggregated ? 1 : 3)
+    const laneOf = (lane: number) => laneIndex.get(lane) ?? 0
+    const maxLane = Math.max(1, ...[...laneIndex.values()].map(Math.abs))
+    const layout = buildLayout(axis, maxLane, W, aggregated)
     layoutRef.current = layout
     nodesRef.current = nodes
 
@@ -315,6 +415,9 @@ export default function MazeGraph({
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.12, 6])
+      // ホイールは拡大縮小。ただし Shift 併用は横移動に回す（下の wheel.pan が拾う）
+      .filter((event: MouseEvent | WheelEvent) =>
+        !(event.type === 'wheel' && event.shiftKey) && !(event as MouseEvent).button)
       .on('zoom', event => {
         const t = event.transform as d3.ZoomTransform
         g.attr('transform', t.toString())
@@ -328,6 +431,15 @@ export default function MazeGraph({
       })
     svg.call(zoom)
     zoomRef.current = zoom
+
+    // Shift + ホイールで横移動。蛇行させたぶん横に長いので、行を横に追える必要がある
+    svg.on('wheel.pan', (event: WheelEvent) => {
+      if (!event.shiftKey) return
+      event.preventDefault()
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+      const k = d3.zoomTransform(svg.node()!).k
+      zoom.translateBy(svg, -delta / k, 0)
+    })
 
     // ── 行（廊下）────────────────────────────────────────
     const corridors = g.append('g').attr('class', 'corridors')
@@ -458,6 +570,18 @@ export default function MazeGraph({
       }
     })
 
+    // まとまりの件数（大きさだけでは何件か分からない）
+    nodeElems.filter(d => (d.count ?? 1) > 1)
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dy', 3.5)
+      .attr('fill', '#1A1107')
+      .attr('font-size', d => Math.min(13, 8 + Math.sqrt(d.count ?? 1)))
+      .attr('font-weight', '700')
+      .attr('font-family', 'JetBrains Mono, monospace')
+      .attr('pointer-events', 'none')
+      .text(d => String(d.count))
+
     // 沼マーカー
     if (struggleIds && struggleIds.size > 0) {
       nodeElems.filter(d => struggleIds.has(d.id))
@@ -549,12 +673,14 @@ export default function MazeGraph({
     const sim = d3.forceSimulation<D3Node>(nodes)
       // x は「その時刻の位置」に引く。時間が近いコミットは同じ場所に引かれ、
       // 反発と衝突がそれを塊に押し広げる —— 集中して書いた時期が塊として見える
-      .force('x', d3.forceX<D3Node>(d => layout.pos(d.timestamp, d.lane).x).strength(0.6))
+      .force('x', d3.forceX<D3Node>(d => layout.pos(d.timestamp, laneOf(d.lane)).x)
+        .strength(aggregated ? 0.9 : 0.6))
       // y のしばりは弱くする。強く縛ると1本の線に戻り、
       // 集中して書いた時期が「線の上の密な部分」にしか見えなくなる
-      .force('y', d3.forceY<D3Node>(d => layout.pos(d.timestamp, d.lane).y)
+      .force('y', d3.forceY<D3Node>(d => layout.pos(d.timestamp, laneOf(d.lane)).y)
         .strength(d => d.isMainBranch ? 0.3 : 0.2))
-      .force('charge', d3.forceManyBody<D3Node>().strength(-120).distanceMax(220))
+      .force('charge', d3.forceManyBody<D3Node>()
+        .strength(aggregated ? -40 : -120).distanceMax(220))
       .force('link', d3.forceLink<D3Node, D3Link>(links).id(d => d.id)
         .distance(26).strength(0.25))
       .force('collision', d3.forceCollide<D3Node>(d => nodeRadius(d) + 3.5).strength(0.95))
@@ -600,8 +726,8 @@ export default function MazeGraph({
     const mmInner = mm.append('g').attr('transform', `translate(${MM_PAD},${MM_PAD}) scale(${mmScale})`)
     mmInner.selectAll('circle')
       .data(nodes).join('circle')
-      .attr('cx', d => layout.pos(d.timestamp, d.lane).x)
-      .attr('cy', d => layout.pos(d.timestamp, d.lane).y)
+      .attr('cx', d => layout.pos(d.timestamp, laneOf(d.lane)).x)
+      .attr('cy', d => layout.pos(d.timestamp, laneOf(d.lane)).y)
       .attr('r', Math.max(2.5, 3 / mmScale))
       .attr('fill', d => struggleIds?.has(d.id) ? '#C0624B' : TYPE_COLOR[d.type])
       .attr('opacity', 0.75)
@@ -641,14 +767,17 @@ export default function MazeGraph({
     }
 
     // ── 初期表示 ──────────────────────────────────────────
-    sim.tick(110)         // だいたい落ち着くまで先に進めてから映す（初回の暴れを見せない）
+    // 目標位置が決まっているので、落ち着くまで先に回してから止める。
+    // 回し続けると 900 件では毎フレーム再描画になって操作が重くなる。
+    sim.tick(nodes.length > 400 ? 160 : 110)
     applyPositions()
+    sim.stop()
     fitLayout(svg, zoom, layout, W, H)
 
     if (selectedNodeId || highlightIds) applyHighlight(nodeElems, selectedNodeId, highlightIds)
 
     return () => { sim.stop() }
-  }, [nodes, links, handleNodeClick, struggleIds])
+  }, [nodes, links, handleNodeClick, struggleIds, unit])
 
   useEffect(() => {
     if (!svgRef.current) return
@@ -742,20 +871,44 @@ export default function MazeGraph({
         border: '1px solid var(--border)', borderRadius: 8,
         padding: '5px 10px', fontSize: 11, color: 'var(--text-secondary)',
       }}>
-        <span style={{ color: 'var(--text-dim)' }}>表示</span>
-        {DISPLAY_LIMITS.map(n => (
-          <button key={n} onClick={() => setDisplayLimit(n)} style={{
-            background: displayLimit === n ? 'var(--accent)' : 'transparent',
-            border: `1px solid ${displayLimit === n ? 'var(--accent)' : 'var(--border)'}`,
-            borderRadius: 4, padding: '2px 7px',
-            color: displayLimit === n ? '#1A1107' : 'var(--text-secondary)',
+        {/* まとまり / コミット の切り替え。900件を1件ずつ描いても全体は読めない */}
+        {(['session', 'commit'] as const).map(u => (
+          <button key={u} onClick={() => setUnitOverride(u)} style={{
+            background: unit === u ? 'var(--accent)' : 'transparent',
+            border: `1px solid ${unit === u ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 4, padding: '2px 8px',
+            color: unit === u ? '#1A1107' : 'var(--text-secondary)',
             cursor: 'pointer', fontSize: 11,
-            fontWeight: displayLimit === n ? 600 : 400,
+            fontWeight: unit === u ? 600 : 400,
           }}>
-            {n >= 1000 ? '全件' : n}
+            {u === 'session' ? `まとまり ${sessionCount}` : 'コミット'}
           </button>
         ))}
-        <span style={{ color: 'var(--text-dim)', marginLeft: 2 }}>/ {totalCount}</span>
+
+        <div style={{ width: 1, height: 14, background: 'var(--border)', margin: '0 3px' }} />
+
+        {unit === 'commit' ? (
+          <>
+            <span style={{ color: 'var(--text-dim)' }}>表示</span>
+            {DISPLAY_LIMITS.map(n => (
+              <button key={n} onClick={() => setDisplayLimit(n)} style={{
+                background: displayLimit === n ? 'var(--accent)' : 'transparent',
+                border: `1px solid ${displayLimit === n ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 4, padding: '2px 7px',
+                color: displayLimit === n ? '#1A1107' : 'var(--text-secondary)',
+                cursor: 'pointer', fontSize: 11,
+                fontWeight: displayLimit === n ? 600 : 400,
+              }}>
+                {n >= 1000 ? '全件' : n}
+              </button>
+            ))}
+            <span style={{ color: 'var(--text-dim)', marginLeft: 2 }}>/ {totalCount}</span>
+          </>
+        ) : (
+          <span style={{ color: 'var(--text-dim)' }}>
+            {totalCount} コミットを {sessionCount} のまとまりに · クリックで中へ
+          </span>
+        )}
       </div>
 
       <Tooltip />

@@ -24,6 +24,7 @@ interface GithubInfo { owner: string; name: string }
 type Focus =
   | { kind: 'struggle'; episode: StruggleEpisode; hashes: string[] }
   | { kind: 'file'; path: string; hashes: string[] }
+  | { kind: 'session'; hashes: string[] }
   | null
 
 export default function App() {
@@ -331,6 +332,11 @@ export default function App() {
                   selectedNodeId={selectedNode?.id}
                   highlightIds={highlightIds}
                   struggleIds={struggleNodeIds}
+                  onDrillDown={hashes => {
+                    setFocus({ kind: 'session', hashes })
+                    const first = result!.graph.nodes.find(n => n.id === hashes[0])
+                    if (first) setSelectedNode(first)
+                  }}
                 />
               ) : (
                 <MazeModeView

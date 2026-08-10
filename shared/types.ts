@@ -157,6 +157,24 @@ export interface MazeNode {
   fy?: number | null
 }
 
+// ===== Work Session（連続して書いた一続きの作業）=====
+export interface WorkSession {
+  id: string
+  startTimestamp: number
+  endTimestamp: number
+  commitCount: number
+  commitHashes: string[]
+  type: CommitType        // その作業を支配するコミット種別
+  lane: number
+  isMainBranch: boolean
+  insertions: number
+  deletions: number
+  fileCount: number
+  label: string           // タグ > 版番号 > 最初のコミットの件名
+  hasMilestone: boolean
+  tagNames: string[]
+}
+
 // ===== Graph Edge (for D3) =====
 export interface MazeEdge {
   id: string

@@ -134,6 +134,12 @@ export default function MazeModeView({
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
+    // Shift 併用は横移動。素のスクロールは拡大縮小
+    if (e.shiftKey) {
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+      setPan(p => ({ x: p.x - delta, y: p.y }))
+      return
+    }
     setScale(s => Math.max(0.2, Math.min(3, s * (e.deltaY < 0 ? 1.1 : 0.9))))
   }, [])
 
