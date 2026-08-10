@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import simpleGit from 'simple-git'
@@ -6,7 +6,7 @@ import { analyzeRepo } from '../../shared/analyzer/index'
 import { buildReport } from '../../shared/analyzer/report'
 import type { AnalysisResult } from '../../shared/types'
 import { loadCache, saveCache } from './cache'
-import { ensureGithubRepo, fetchRepoStatus } from './github'
+import { ensureGithubRepo, fetchRepoStatus, fetchLatest } from './github'
 import { startWatcher, stopWatcher } from './watcher'
 
 const RECENT_REPOS_PATH = path.join(app.getPath('userData'), 'recent-repos.json')
@@ -111,6 +111,29 @@ export function setupIpcHandlers() {
     return loadRecentRepos()
   })
 
+  // リモートから取り込んでから解析し直す。
+  // 「再スキャン」だけでは手元のコミットしか見えず、GitHub 側の新着が永久に反映されない。
+  ipcMain.handle('repo:refresh', async (event, repoPath: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const sendProgress = (msg: string) => win?.webContents.send('repo:progress', msg)
+
+    try {
+      sendProgress('リモートから取り込み中...')
+      const fetchResult = await fetchLatest(repoPath)
+
+      sendProgress(
+        fetchResult.error ? '取り込めませんでした。手元の履歴で解析します...'
+        : fetchResult.newCommits > 0 ? `新着 ${fetchResult.newCommits} 件を取り込みました。解析中...`
+        : '最新でした。解析中...'
+      )
+
+      const result = await analyzeWithCache(repoPath, true, sendProgress)
+      return { ...result, fetch: fetchResult }
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   // 開発過程を Markdown に書き出す（資産として持ち出すための口）
   ipcMain.handle('report:export', async (_event, repoPath: string) => {
     try {
@@ -141,6 +164,13 @@ export function setupIpcHandlers() {
     } catch (err: unknown) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // 外部リンクはアプリ内で遷移させず、既定のブラウザに渡す
+  ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+    if (!/^https?:\/\//.test(url)) return { ok: false, error: 'invalid url' }
+    await shell.openExternal(url)
+    return { ok: true }
   })
 
   ipcMain.on('watch:start', (event, repoPath: string) => {

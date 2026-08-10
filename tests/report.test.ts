@@ -3,6 +3,7 @@ import { buildReport } from '../shared/analyzer/report'
 import { detectStruggles } from '../shared/analyzer/struggle'
 import { detectHotspots } from '../shared/analyzer/hotspot'
 import { calculateScore, generateSummary } from '../shared/analyzer/score'
+import { buildActivityProfile } from '../shared/analyzer/activity'
 import { buildMazeGraph } from '../shared/analyzer/graph'
 import { commit, at } from './helpers'
 import type { AnalysisResult } from '../shared/types'
@@ -20,6 +21,7 @@ function analysisOf(commits = [
     score,
     struggles: detectStruggles(commits),
     hotspots: detectHotspots(commits),
+    activity: buildActivityProfile(commits),
     stats: {
       totalCommits: commits.length,
       authors: ['tester'],
@@ -42,6 +44,7 @@ describe('buildReport', () => {
     expect(text).toContain('開発サマリー')
     expect(text).toContain('repo の沼')
     expect(text).toContain('repo のホットスポット')
+    expect(text).toContain('repo の働き方')
     expect(text).toContain('ファイル差分の取得率 100%')
   })
 

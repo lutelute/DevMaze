@@ -119,6 +119,36 @@ describe('detectStruggles — 全体', () => {
   })
 })
 
+describe('detectStruggles — 再発', () => {
+  const churnAt = (baseHours: number) => [
+    commit({ type: 'feature',   timestamp: at(baseHours + 0),  files: ['src/x.ts'] }),
+    commit({ type: 'error_fix', timestamp: at(baseHours + 4),  files: ['src/x.ts'] }),
+    commit({ type: 'error_fix', timestamp: at(baseHours + 8),  files: ['src/x.ts'] }),
+    commit({ type: 'normal',    timestamp: at(baseHours + 12), files: ['src/x.ts'] }),
+  ]
+
+  it('同じファイルで時期を空けて繰り返したら再発として印をつける', () => {
+    // 2か月あけて2回、同じファイルで往復する
+    const found = detectStruggles([...churnAt(0), ...churnAt(24 * 60)])
+    const churns = found.filter(e => e.kind === 'file_churn')
+    expect(churns).toHaveLength(2)
+    expect(churns.every(e => e.recurrence?.times === 2)).toBe(true)
+    expect(churns.map(e => e.recurrence?.index).sort()).toEqual([1, 2])
+  })
+
+  it('時期が近い（14日未満）ものは同じ一件の続きとして再発に数えない', () => {
+    const found = detectStruggles([...churnAt(0), ...churnAt(24 * 5)])
+    expect(found.every(e => e.recurrence === undefined)).toBe(true)
+  })
+
+  it('夜間の割合を持つ', () => {
+    const night = ['22:10', '23:20', '23:59'].map(hm =>
+      commit({ type: 'error_fix', timestamp: new Date(`2026-01-05T${hm}:00`), files: ['src/x.ts'] }))
+    const episode = detectStruggles(night).find(e => e.kind === 'fix_chain')
+    expect(episode?.nightRatio).toBe(1)
+  })
+})
+
 describe('formatStruggles', () => {
   it('ファイル差分が取れていないときは、その旨を必ず出す', () => {
     const text = formatStruggles([], 'repo', 0.1)

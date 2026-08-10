@@ -9,6 +9,7 @@ interface Props {
   onRecentRepo: (path: string) => void
   onRefresh?: () => void
   onExportReport?: () => void
+  onSearch?: () => void
   recentRepos: string[]
   fromCache?: boolean
   githubInfo?: { owner: string; name: string } | null
@@ -26,7 +27,7 @@ function parseGithubShorthand(input: string): { owner: string; name: string } | 
 }
 
 export default function Header({
-  repoName, onOpenRepo, onOpenGithub, onRecentRepo, onRefresh, onExportReport,
+  repoName, onOpenRepo, onOpenGithub, onRecentRepo, onRefresh, onExportReport, onSearch,
   recentRepos, fromCache, githubInfo,
 }: Props) {
   const [showGithub, setShowGithub] = useState(false)
@@ -186,6 +187,17 @@ export default function Header({
         {repoName && onRefresh && (
           <IconBtn onClick={onRefresh} title="再スキャン">
             <RefreshIcon size={14} color="currentColor" />
+          </IconBtn>
+        )}
+
+        {/* コミット検索（⌘F でも開く） */}
+        {repoName && onSearch && (
+          <IconBtn onClick={onSearch} title="コミットを検索 (⌘F)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+              strokeWidth="1.6" strokeLinecap="round">
+              <circle cx="7" cy="7" r="4.5"/>
+              <line x1="10.5" y1="10.5" x2="14" y2="14"/>
+            </svg>
           </IconBtn>
         )}
 

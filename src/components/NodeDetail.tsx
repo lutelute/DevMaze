@@ -8,6 +8,17 @@ interface Props {
   /** リポジトリ全体のホットスポット（変更ファイルに risk を添えるのに使う） */
   hotspots?: FileHotspot[]
   onSelectStruggle?: (episode: StruggleEpisode) => void
+  /** 変更ファイルをクリックしたとき、そのファイルの履歴を辿る */
+  onSelectFile?: (path: string) => void
+  /** origin の URL（GitHub 上のコミット・PR へのリンクを作る） */
+  remoteUrl?: string
+}
+
+/** git のリモートURL（SSH / HTTPS どちらの書式でも）から GitHub の owner/repo を取り出す */
+function githubSlug(remoteUrl?: string): string | null {
+  if (!remoteUrl) return null
+  const m = remoteUrl.match(/github\.com[:/]([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/)
+  return m ? `${m[1]}/${m[2]}` : null
 }
 
 const STRUGGLE_LABEL: Record<StruggleEpisode['kind'], string> = {
@@ -32,10 +43,14 @@ const TYPE_LABELS: Record<CommitType, { label: string; color: string }> = {
   test:      { label: 'テスト',           color: '#6AAF9E' },
 }
 
-export default function NodeDetail({ node, onClose, struggles = [], hotspots = [], onSelectStruggle }: Props) {
+export default function NodeDetail({
+  node, onClose, struggles = [], hotspots = [], onSelectStruggle, onSelectFile, remoteUrl,
+}: Props) {
   const meta = TYPE_LABELS[node.type]
   const date = new Date(node.timestamp)
   const riskByPath = new Map(hotspots.map(h => [h.path, h.risk]))
+  const slug = githubSlug(remoteUrl)
+  const open = (url: string) => window.electronAPI.openExternal?.(url)
 
   return (
     <aside style={{
@@ -106,7 +121,42 @@ export default function NodeDetail({ node, onClose, struggles = [], hotspots = [
         <div>
           <Label>ハッシュ</Label>
           <Value mono>{node.id}</Value>
+          {slug && (
+            <button
+              onClick={() => open(`https://github.com/${slug}/commit/${node.id}`)}
+              style={{
+                marginTop: 6, background: 'none', border: '1px solid var(--border)',
+                borderRadius: 5, padding: '3px 8px', fontSize: 11,
+                color: 'var(--text-secondary)', cursor: 'pointer',
+              }}
+            >
+              GitHub で開く ↗
+            </button>
+          )}
         </div>
+
+        {/* PR / Issue */}
+        {node.refs.length > 0 && (
+          <div>
+            <Label>PR / Issue</Label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {node.refs.map(n => (
+                <button
+                  key={n}
+                  onClick={() => slug && open(`https://github.com/${slug}/pull/${n}`)}
+                  title={slug ? `github.com/${slug} の #${n} を開く` : `#${n}`}
+                  style={{
+                    fontSize: 11, color: '#7A9BB8', background: 'rgba(122,155,184,0.14)',
+                    border: 'none', padding: '2px 7px', borderRadius: 4,
+                    fontFamily: 'monospace', cursor: slug ? 'pointer' : 'default',
+                  }}
+                >
+                  #{n}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         {(node.filesChanged > 0 || node.insertions > 0) && (
@@ -153,11 +203,18 @@ export default function NodeDetail({ node, onClose, struggles = [], hotspots = [
               {node.files.slice(0, 60).map(f => {
                 const risk = riskByPath.get(f)
                 return (
-                  <div key={f} title={f} style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)',
-                    padding: '2px 0',
-                  }}>
+                  <div
+                    key={f}
+                    title={onSelectFile ? `${f}\nクリックでこのファイルの履歴を辿る` : f}
+                    onClick={() => onSelectFile?.(f)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)',
+                      padding: '2px 0', cursor: onSelectFile ? 'pointer' : 'default',
+                    }}
+                    onMouseEnter={e => { if (onSelectFile) e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                  >
                     <span style={{
                       flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left',

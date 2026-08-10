@@ -39,6 +39,16 @@ function extractRevertedHash(message: string, allHashes: Set<string>): string | 
   return partial
 }
 
+/** origin の URL。取れなければ undefined（リモート無しのリポジトリもある） */
+export async function getRemoteUrl(repoPath: string): Promise<string | undefined> {
+  try {
+    const url = (await simpleGit(repoPath).raw(['remote', 'get-url', 'origin'])).trim()
+    return url.length > 0 ? url : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
   const git: SimpleGit = simpleGit(repoPath)
 

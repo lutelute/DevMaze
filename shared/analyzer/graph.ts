@@ -238,6 +238,17 @@ function buildLaneInfos(commits: CommitNode[], laneMap: Map<string, number>): La
   return infos.sort((a, b) => a.lane - b.lane)
 }
 
+// コミットメッセージの "(#123)" や "#123" を PR / Issue 番号として拾う。
+// GitHub API を叩かなくてもここまでは分かる。
+function extractRefs(message: string): number[] {
+  const refs = new Set<number>()
+  for (const m of message.matchAll(/#(\d{1,6})\b/g)) {
+    const n = parseInt(m[1], 10)
+    if (n > 0) refs.add(n)
+  }
+  return [...refs].slice(0, 6)
+}
+
 // ===== Graph builder =====
 export function buildMazeGraph(commits: CommitNode[]): MazeGraph {
   const mainHashes = findMainBranchHashes(commits)
@@ -261,6 +272,7 @@ export function buildMazeGraph(commits: CommitNode[]): MazeGraph {
       branchNames: c.branchNames,
       tagNames: c.tagNames,
       files: c.files,
+      refs: extractRefs(c.message),
       isMainBranch: mainHashes.has(c.hash),
       lane: laneMap.get(c.hash) ?? 0,
       isMilestone: milestoneMap.has(c.hash),

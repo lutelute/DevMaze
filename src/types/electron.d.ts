@@ -11,12 +11,24 @@ export interface RepoStatus {
 
 type GithubStatusResponse = { ok: true; data: RepoStatus } | { ok: false; error: string }
 
+export interface FetchResult {
+  fetched: boolean
+  newCommits: number
+  error?: string
+}
+
+type RefreshResponse =
+  | { ok: true; data: AnalysisResult; fromCache: boolean; fetch: FetchResult }
+  | { ok: false; error: string }
+
 interface ElectronAPI {
   openRepoDialog: () => Promise<string | null>
   analyzeRepo: (repoPath: string, forceRefresh?: boolean) => Promise<AnalyzeResponse>
   openGithubRepo: (input: string) => Promise<AnalyzeResponse>
   getRecentRepos: () => Promise<string[]>
   exportReport: (repoPath: string) => Promise<{ ok: true; path: string } | { ok: false; error: string }>
+  refreshRepo: (repoPath: string) => Promise<RefreshResponse>
+  openExternal: (url: string) => Promise<unknown>
   onProgress: (callback: (msg: string) => void) => () => void
   getInitialRepo: () => Promise<string | null>
   getGithubStatus: (owner: string, name: string) => Promise<GithubStatusResponse>

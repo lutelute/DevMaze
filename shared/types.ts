@@ -59,6 +59,15 @@ export interface StruggleEpisode {
   files: { path: string; touches: number }[]
   escape?: StruggleCommitRef    // 沼を抜けた（と思われる）最後のコミット
   evidence: string[]            // 判定の数値的根拠（人間/エージェントが再判断できるように）
+  /** 同じ場所で時期を空けて繰り返している場合の情報 */
+  recurrence?: {
+    file: string
+    times: number       // 同じファイルで起きた沼の回数
+    index: number       // これが何回目か（1始まり）
+    firstAt: number     // 最初に起きた時刻
+  }
+  /** この沼のコミットのうち、夜（22-5時）に打たれた割合 0-1 */
+  nightRatio: number
 }
 
 // ===== Development Zone (time-based phase) =====
@@ -94,6 +103,31 @@ export interface FileHotspot {
   reasons: string[]
 }
 
+// ===== Activity（どう働いていたか） =====
+export interface AuthorStat {
+  name: string
+  commits: number
+  fixCommits: number
+  insertions: number
+  deletions: number
+  firstSeen: number
+  lastSeen: number
+}
+
+export interface ActivityProfile {
+  byHour: number[]        // 0-23
+  byWeekday: number[]     // 0(日)-6(土)
+  nightRatio: number      // 22-5時の割合 0-1
+  weekendRatio: number
+  busiestDay: { date: string; count: number } | null
+  activeDays: number      // コミットのあった日数
+  spanDays: number        // 最初から最後までの日数
+  commitsPerActiveDay: number
+  longestStreakDays: number
+  longestBreakDays: number
+  authors: AuthorStat[]
+}
+
 // ===== Graph Node (for D3) =====
 export interface MazeNode {
   id: string
@@ -108,6 +142,8 @@ export interface MazeNode {
   branchNames: string[]
   tagNames: string[]
   files: string[]
+  /** コミットメッセージ中の (#123) — PR / Issue 番号 */
+  refs: number[]
   isMainBranch: boolean
   lane: number
   isMilestone: boolean
@@ -159,6 +195,9 @@ export interface AnalysisResult {
   score: TrialScore
   struggles: StruggleEpisode[]
   hotspots: FileHotspot[]
+  activity: ActivityProfile
+  /** origin のURL（コミットやPRへのリンクを組み立てるのに使う） */
+  remoteUrl?: string
   stats: {
     totalCommits: number
     authors: string[]

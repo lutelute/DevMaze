@@ -4,8 +4,9 @@ import crypto from 'crypto'
 import { app } from 'electron'
 import type { AnalysisResult } from '../../shared/types'
 
-// 2: struggles（沼エピソード）を AnalysisResult に追加
-const CACHE_VERSION = 2
+// 2: struggles（沼エピソード）を追加
+// 3: hotspots / activity / remoteUrl / node.refs を追加
+const CACHE_VERSION = 3
 
 interface CacheEntry {
   version: number

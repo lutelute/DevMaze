@@ -91,11 +91,17 @@ function buildEpisode(draft: Draft, sorted: CommitNode[], index: number): Strugg
   const files = countFiles(members)
   const focus = new Set(files.slice(0, 5).map(f => f.path))
 
+  const night = members.filter(c => {
+    const h = c.timestamp.getHours()
+    return h >= 22 || h < 5
+  }).length
+
   return {
     id: `struggle_${draft.kind}_${index}`,
     kind: draft.kind,
     title: draft.title,
     severity: clampSeverity(draft.severity),
+    nightRatio: Math.round((night / members.length) * 100) / 100,
     startTimestamp: start,
     endTimestamp: end,
     durationHours: Math.round(((end - start) / HOUR) * 10) / 10,
@@ -215,34 +221,41 @@ function detectFileChurn(sorted: CommitNode[]): Draft[] {
   for (const [file, touches] of byFile) {
     if (touches.length < 4) continue
 
-    // 7日窓で最も密集した区間を取る
-    let best: CommitNode[] = []
-    for (let i = 0; i < touches.length; i++) {
+    // 7日窓を端から順に走査して、密集した区間を「すべて」拾う。
+    // 最も密な一区間だけを採ると、同じファイルで時期を空けて繰り返した沼が
+    // 1件に潰れ、再発（同じ場所で何度も詰まっている）が見えなくなる。
+    let i = 0
+    while (i < touches.length) {
       let j = i
       while (j + 1 < touches.length &&
              touches[j + 1].timestamp.getTime() - touches[i].timestamp.getTime() <= 7 * DAY) j++
-      if (j - i + 1 > best.length) best = touches.slice(i, j + 1)
+
+      const window = touches.slice(i, j + 1)
+      // 「作り込んだ」のか「詰まった」のかを分けるため、荒れの印を要求する。
+      // 件数ではなく割合で見るのが要点 —— 毎コミット追記される台帳やログは
+      // 変更回数だけは多く、1件でも fix が混じれば沼に化けてしまう。
+      const rough = window.filter(c => c.type === 'error_fix' || c.type === 'revert' || c.type === 'wip')
+      const enoughRough = rough.length >= Math.max(1, Math.ceil(window.length * 0.2))
+
+      if (window.length < 4 || !enoughRough) { i++; continue }
+
+      const span = window[window.length - 1].timestamp.getTime() - window[0].timestamp.getTime()
+
+      drafts.push({
+        kind: 'file_churn',
+        members: window,
+        severity: 30 + (window.length - 4) * 6 + rough.length * 6 +
+                  (window.some(c => c.type === 'revert') ? 12 : 0),
+        title: `${fileLabel(file)} を ${window.length} 回書き直した`,
+        evidence: [
+          `${file} を ${formatDuration(span)} のあいだに ${window.length} 回変更`,
+          `うち fix/revert/WIP: ${rough.length}件`,
+          `変更行の合計: +${window.reduce((a, c) => a + c.insertions, 0)} / -${window.reduce((a, c) => a + c.deletions, 0)}`,
+        ],
+      })
+
+      i = j + 1
     }
-    if (best.length < 4) continue
-
-    // 「作り込んだ」のか「詰まった」のかを分けるため、荒れの印を要求する
-    const rough = best.filter(c => c.type === 'error_fix' || c.type === 'revert' || c.type === 'wip')
-    if (rough.length === 0) continue
-
-    const span = best[best.length - 1].timestamp.getTime() - best[0].timestamp.getTime()
-
-    drafts.push({
-      kind: 'file_churn',
-      members: best,
-      severity: 30 + (best.length - 4) * 6 + rough.length * 6 +
-                (best.some(c => c.type === 'revert') ? 12 : 0),
-      title: `${fileLabel(file)} を ${best.length} 回書き直した`,
-      evidence: [
-        `${file} を ${formatDuration(span)} のあいだに ${best.length} 回変更`,
-        `うち fix/revert/WIP: ${rough.length}件`,
-        `変更行の合計: +${best.reduce((a, c) => a + c.insertions, 0)} / -${best.reduce((a, c) => a + c.deletions, 0)}`,
-      ],
-    })
   }
 
   return drafts
@@ -375,10 +388,58 @@ export function detectStruggles(commits: CommitNode[]): StruggleEpisode[] {
     ...detectStallBursts(sorted),
   ])
 
-  return drafts
-    .map((d, i) => buildEpisode(d, sorted, i))
+  const episodes = drafts.map((d, i) => buildEpisode(d, sorted, i))
+  markRecurrences(episodes)
+
+  return episodes
     .sort((a, b) => b.severity - a.severity || b.endTimestamp - a.endTimestamp)
     .slice(0, 30)
+}
+
+/**
+ * 同じ場所で、時期を空けて繰り返し詰まっているものに印をつける。
+ *
+ * 一度きりの沼と、半年に3回同じファイルで溺れている沼は、意味がまったく違う。
+ * 後者は「そのとき苦労した」ではなく「その場所に問題がある」。
+ * 時期が近いものは同じ一件の続きなので、14日以上あいた場合だけ別回と数える。
+ */
+const RECURRENCE_GAP = 14 * DAY
+
+function markRecurrences(episodes: StruggleEpisode[]): void {
+  const byFile = new Map<string, StruggleEpisode[]>()
+
+  for (const e of episodes) {
+    const top = e.files[0]?.path
+    if (!top) continue
+    if (!byFile.has(top)) byFile.set(top, [])
+    byFile.get(top)!.push(e)
+  }
+
+  for (const [file, group] of byFile) {
+    if (group.length < 2) continue
+    const sorted = [...group].sort((a, b) => a.startTimestamp - b.startTimestamp)
+
+    // 時期の離れたものだけを別回として拾う
+    const rounds: StruggleEpisode[] = [sorted[0]]
+    for (const e of sorted.slice(1)) {
+      if (e.startTimestamp - rounds[rounds.length - 1].endTimestamp >= RECURRENCE_GAP) rounds.push(e)
+    }
+    if (rounds.length < 2) continue
+
+    rounds.forEach((e, i) => {
+      e.recurrence = {
+        file,
+        times: rounds.length,
+        index: i + 1,
+        firstAt: rounds[0].startTimestamp,
+      }
+      // 繰り返しているという事実そのものが深刻度
+      e.severity = clampSeverity(e.severity + (rounds.length - 1) * 8)
+      e.evidence.push(
+        `同じファイル（${file}）で ${rounds.length} 回目の沼（${i + 1}回目 / 初回 ${new Date(rounds[0].startTimestamp).toLocaleDateString('ja-JP')}）`
+      )
+    })
+  }
 }
 
 // ===== Markdown 化（MCP / レポート用） =====
@@ -427,7 +488,9 @@ export function formatStruggles(
     lines.push(
       `### ${severityMark(e.severity)} ${e.title}`,
       ``,
-      `- **種別**: ${KIND_LABEL[e.kind]} / **深刻度**: ${e.severity}`,
+      `- **種別**: ${KIND_LABEL[e.kind]} / **深刻度**: ${e.severity}`
+        + (e.recurrence ? ` / **再発**: ${e.recurrence.file} で ${e.recurrence.index}/${e.recurrence.times} 回目` : '')
+        + (e.nightRatio >= 0.4 ? ` / **夜間作業**: ${Math.round(e.nightRatio * 100)}%` : ''),
       `- **期間**: ${date(e.startTimestamp)} 〜 ${date(e.endTimestamp)}（${formatDuration(e.endTimestamp - e.startTimestamp)}）`,
       `- **コミット**: ${e.commits.length}件 — ${e.commits.slice(0, 6).map(c => c.shortHash).join(', ')}${e.commits.length > 6 ? ' …' : ''}`,
     )

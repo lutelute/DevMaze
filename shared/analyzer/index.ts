@@ -1,8 +1,9 @@
-import { analyzeGitRepo } from './git'
+import { analyzeGitRepo, getRemoteUrl } from './git'
 import { calculateScore, generateSummary } from './score'
 import { buildMazeGraph, getRepoName } from './graph'
 import { detectStruggles } from './struggle'
 import { detectHotspots } from './hotspot'
+import { buildActivityProfile } from './activity'
 import type { AnalysisResult } from '../types'
 
 export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
@@ -11,6 +12,8 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
   const score = calculateScore(commits)
   const struggles = detectStruggles(commits)
   const hotspots = detectHotspots(commits)
+  const activity = buildActivityProfile(commits)
+  const remoteUrl = await getRemoteUrl(repoPath)
   const repoName = getRepoName(repoPath)
   const summary = generateSummary(commits, score, repoName)
 
@@ -31,6 +34,8 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
     score,
     struggles,
     hotspots,
+    activity,
+    remoteUrl,
     stats: {
       totalCommits: commits.length,
       authors,
@@ -54,3 +59,4 @@ export { calculateScore, generateSummary } from './score'
 export { buildMazeGraph, getRepoName } from './graph'
 export { detectStruggles, formatStruggles, struggleKindLabel } from './struggle'
 export { detectHotspots, formatHotspots } from './hotspot'
+export { buildActivityProfile, formatActivity } from './activity'

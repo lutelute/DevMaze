@@ -7,6 +7,7 @@ import MazeModeView from './components/MazeModeView'
 import NodeDetail from './components/NodeDetail'
 import type { MazeNode, StruggleEpisode } from '../shared/types'
 import WelcomeScreen from './components/WelcomeScreen'
+import SearchPanel from './components/SearchPanel'
 
 type ViewMode = 'graph' | 'maze'
 
@@ -18,6 +19,13 @@ type AppState =
 
 interface GithubInfo { owner: string; name: string }
 
+// 迷路の一部だけを浮かび上がらせるための注目対象。
+// 沼（時間の軸）とファイル（場所の軸）を同じ仕組みで扱う。
+type Focus =
+  | { kind: 'struggle'; episode: StruggleEpisode; hashes: string[] }
+  | { kind: 'file'; path: string; hashes: string[] }
+  | null
+
 export default function App() {
   const [state, setState] = useState<AppState>({ phase: 'idle' })
   const [selectedNode, setSelectedNode] = useState<MazeNode | null>(null)
@@ -27,8 +35,9 @@ export default function App() {
   const [currentRepoPath, setCurrentRepoPath] = useState<string | null>(null)
   const [githubInfo, setGithubInfo] = useState<GithubInfo | null>(null)
   const [watchBanner, setWatchBanner] = useState(false)
-  const [struggle, setStruggle] = useState<StruggleEpisode | null>(null)
+  const [focus, setFocus] = useState<Focus>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -48,7 +57,7 @@ export default function App() {
     setState({ phase: 'loading', progress: '初期化中...' })
     setSelectedNode(null)
     setGithubInfo(null)
-    setStruggle(null)
+    setFocus(null)
 
     const result = await window.electronAPI.analyzeRepo(resolved, forceRefresh)
     handleAnalysisResult(resolved, result)
@@ -58,7 +67,7 @@ export default function App() {
     setState({ phase: 'loading', progress: 'GitHubリポジトリを確認中...' })
     setSelectedNode(null)
     setGithubInfo(null)
-    setStruggle(null)
+    setFocus(null)
 
     const result = await window.electronAPI.openGithubRepo(input)
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -78,9 +87,30 @@ export default function App() {
     if (m) setGithubInfo({ owner: m[1], name: m[2] })
   }, [])
 
-  const refreshRepo = useCallback(() => {
-    if (currentRepoPath) openRepo(currentRepoPath, true)
-  }, [currentRepoPath, openRepo])
+  // 再スキャンは「リモートから取り込んでから」行う。
+  // 手元のコミットだけ見ていても、GitHub 側の新着は永久に反映されない。
+  const refreshRepo = useCallback(async () => {
+    if (!currentRepoPath) return
+    setState({ phase: 'loading', progress: 'リモートから取り込み中...' })
+    setSelectedNode(null)
+    setFocus(null)
+
+    const res = await window.electronAPI.refreshRepo(currentRepoPath)
+    if (!res.ok) {
+      setState({ phase: 'error', message: res.error })
+      return
+    }
+    setState({ phase: 'ready', result: res.data, fromCache: false })
+    setWatchBanner(false)
+
+    const f = res.fetch
+    setToast(
+      f?.error ? `リモートから取り込めませんでした（${f.error}）。手元の履歴で解析しました`
+      : f?.newCommits ? `新着 ${f.newCommits} 件を取り込みました`
+      : f?.fetched ? 'すでに最新でした'
+      : '再解析しました（リモートなし）'
+    )
+  }, [currentRepoPath])
 
   useEffect(() => {
     window.electronAPI.getRecentRepos().then(setRecentRepos)
@@ -110,10 +140,10 @@ export default function App() {
   const result = state.phase === 'ready' ? state.result : null
   const fromCache = state.phase === 'ready' ? state.fromCache : false
 
-  // 沼を選ぶと、そのエピソードのコミットだけを迷路上に浮かび上がらせる
+  // 注目対象のコミットだけを迷路上に浮かび上がらせる
   const highlightIds = useMemo(
-    () => struggle ? new Set(struggle.commits.map(c => c.hash)) : undefined,
-    [struggle],
+    () => focus ? new Set(focus.hashes) : undefined,
+    [focus],
   )
 
   // 沼に属するコミット全体（迷路上に常時マーカーを出す）
@@ -130,6 +160,18 @@ export default function App() {
     else setToast(res.error === 'canceled' ? null : `保存に失敗しました: ${res.error}`)
   }, [currentRepoPath])
 
+  // ⌘F / Ctrl+F で検索
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setSearchOpen(v => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => {
     if (!toast || toast.endsWith('中...')) return
     const t = setTimeout(() => setToast(null), 5000)
@@ -143,10 +185,23 @@ export default function App() {
   }, [result, selectedNode])
 
   const selectStruggle = useCallback((episode: StruggleEpisode | null) => {
-    setStruggle(episode)
-    if (!episode || !result) return
-    const first = result.graph.nodes.find(n => n.id === episode.commits[0]?.hash)
+    if (!episode) { setFocus(null); return }
+    setFocus({ kind: 'struggle', episode, hashes: episode.commits.map(c => c.hash) })
+    const first = result?.graph.nodes.find(n => n.id === episode.commits[0]?.hash)
     if (first) setSelectedNode(first)
+  }, [result])
+
+  // ファイルから辿る: そのファイルを触ったコミットだけを残し、最新を選ぶ
+  const selectFile = useCallback((path: string | null) => {
+    if (!path || !result) { setFocus(null); return }
+    const touching = result.graph.nodes.filter(n => n.files.includes(path))
+    if (touching.length === 0) {
+      setToast(`${path} を触ったコミットは表示範囲にありません`)
+      return
+    }
+    setFocus({ kind: 'file', path, hashes: touching.map(n => n.id) })
+    const latest = [...touching].sort((a, b) => b.timestamp - a.timestamp)[0]
+    setSelectedNode(latest)
   }, [result])
 
   return (
@@ -158,6 +213,7 @@ export default function App() {
         onRecentRepo={openRepo}
         onRefresh={result ? refreshRepo : undefined}
         onExportReport={result ? exportReport : undefined}
+        onSearch={result ? () => setSearchOpen(true) : undefined}
         recentRepos={recentRepos}
         fromCache={fromCache}
         githubInfo={githubInfo}
@@ -203,8 +259,10 @@ export default function App() {
           recentRepos={recentRepos}
           currentRepoPath={currentRepoPath}
           onOpenRecent={openRepo}
-          selectedStruggleId={struggle?.id}
+          selectedStruggleId={focus?.kind === 'struggle' ? focus.episode.id : undefined}
           onSelectStruggle={selectStruggle}
+          selectedFilePath={focus?.kind === 'file' ? focus.path : undefined}
+          onSelectFile={selectFile}
         />
 
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-base)' }}>
@@ -266,6 +324,15 @@ export default function App() {
           )}
         </div>
 
+        {searchOpen && result && (
+          <SearchPanel
+            nodes={result.graph.nodes}
+            onSelect={node => { setSelectedNode(node); setFocus(null) }}
+            onSelectFile={selectFile}
+            onClose={() => setSearchOpen(false)}
+          />
+        )}
+
         {toast && (
           <div style={{
             position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
@@ -286,6 +353,8 @@ export default function App() {
             struggles={nodeStruggles}
             hotspots={result?.hotspots}
             onSelectStruggle={selectStruggle}
+            onSelectFile={selectFile}
+            remoteUrl={result?.remoteUrl}
           />
         )}
       </div>

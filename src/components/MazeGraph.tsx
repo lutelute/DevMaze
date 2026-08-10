@@ -51,7 +51,124 @@ const LANE_BAND_COLORS = [
 ]
 
 const DISPLAY_LIMITS = [80, 150, 300, 1000] as const
-const LANE_HEIGHT = 65
+const LANE_HEIGHT = 65          // レーン間隔の基準値（実際は画面高に合わせて伸縮する）
+
+const HOUR = 3600_000
+const DAY = 24 * HOUR
+
+// ── 時間軸 ─────────────────────────────────────────────────
+//
+// コミットを実時間で並べると、開発が集中した数日に全部が固まり、
+// 残りが空白になる（779コミットのリポジトリで横一本の帯に潰れる原因）。
+// そこで、コミット間隔を対数で圧縮した「体感時間」の軸を作る。
+// 密度が均されて読めるようになり、長い空白は縮んでも消えずに残る。
+interface TimeTick { x: number; label: string; major: boolean }
+
+interface TimeAxis {
+  pos: (t: number) => number
+  /** x → 時刻（ルーラーに「いま見えている期間」を出すのに使う） */
+  time: (x: number) => number
+  total: number
+  /** 見えている期間に応じて粒度を変えた目盛り（時 / 日 / 週 / 月 / 年） */
+  ticksIn: (t0: number, t1: number) => TimeTick[]
+  gaps: { x1: number; x2: number; days: number }[]
+}
+
+const STEP_PX = 30        // コミット1件ぶんの基本間隔
+const GAP_K = 16          // 空白時間の効き
+const GAP_MAX = 240       // 1つの空白が占められる最大幅
+
+function buildTimeAxis(timestamps: number[]): TimeAxis {
+  const ts = [...new Set(timestamps)].sort((a, b) => a - b)
+  if (ts.length === 0) {
+    return { pos: () => 0, time: () => 0, total: 1, ticksIn: () => [], gaps: [] }
+  }
+
+  const xs: number[] = [0]
+  const gaps: TimeAxis['gaps'] = []
+
+  for (let i = 1; i < ts.length; i++) {
+    const gap = ts[i] - ts[i - 1]
+    const extra = Math.min(GAP_MAX, GAP_K * Math.log1p(gap / HOUR))
+    const x = xs[i - 1] + STEP_PX + extra
+    xs.push(x)
+    // 3日以上あいた区間は「止まっていた時間」として帯で見せる
+    if (gap >= 3 * DAY) {
+      gaps.push({ x1: xs[i - 1], x2: x, days: Math.round(gap / DAY) })
+    }
+  }
+
+  const total = xs[xs.length - 1] || 1
+
+  const pos = (t: number): number => {
+    if (t <= ts[0]) return xs[0]
+    if (t >= ts[ts.length - 1]) return xs[xs.length - 1]
+    let lo = 0, hi = ts.length - 1
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1
+      if (ts[mid] <= t) lo = mid
+      else hi = mid
+    }
+    const span = ts[hi] - ts[lo] || 1
+    return xs[lo] + ((t - ts[lo]) / span) * (xs[hi] - xs[lo])
+  }
+
+  const time = (x: number): number => {
+    if (x <= xs[0]) return ts[0]
+    if (x >= xs[xs.length - 1]) return ts[ts.length - 1]
+    let lo = 0, hi = xs.length - 1
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1
+      if (xs[mid] <= x) lo = mid
+      else hi = mid
+    }
+    const span = xs[hi] - xs[lo] || 1
+    return ts[lo] + ((x - xs[lo]) / span) * (ts[hi] - ts[lo])
+  }
+
+  // 目盛りの粒度は「いま見えている期間」で決める。
+  // 全体の期間で固定すると、拡大したときに目盛りが1本も入らなくなる。
+  const ticksIn: TimeAxis['ticksIn'] = (t0, t1) => {
+    const spanDays = Math.max(0, t1 - t0) / DAY
+    const unit: 'hour' | 'day' | 'week' | 'month' | 'year' =
+      spanDays > 1100 ? 'year' :
+      spanDays > 200  ? 'month' :
+      spanDays > 30   ? 'week' :
+      spanDays > 2    ? 'day' : 'hour'
+
+    const out: TimeTick[] = []
+    let prevKey = ''
+    for (let i = 0; i < ts.length; i++) {
+      if (ts[i] < t0 || ts[i] > t1) continue
+      const d = new Date(ts[i])
+      const key =
+        unit === 'year'  ? `${d.getFullYear()}` :
+        unit === 'month' ? `${d.getFullYear()}-${d.getMonth()}` :
+        unit === 'week'  ? `${d.getFullYear()}-${weekOf(d)}` :
+        unit === 'day'   ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` :
+                           `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`
+      if (key === prevKey) continue
+      prevKey = key
+      out.push({
+        x: xs[i],
+        label:
+          unit === 'year'  ? `${d.getFullYear()}` :
+          unit === 'month' ? `${d.getFullYear()}/${d.getMonth() + 1}` :
+          unit === 'hour'  ? `${d.getHours()}:00` :
+                             `${d.getMonth() + 1}/${d.getDate()}`,
+        major: unit === 'hour' ? d.getHours() === 0 : d.getDate() === 1,
+      })
+    }
+    return out
+  }
+
+  return { pos, time, total, ticksIn, gaps }
+}
+
+function weekOf(d: Date): number {
+  const start = new Date(d.getFullYear(), 0, 1)
+  return Math.floor((d.getTime() - start.getTime()) / (7 * DAY))
+}
 
 function nodeRadius(n: D3Node): number {
   if (n.type === 'merge')   return 10
@@ -166,10 +283,14 @@ export default function MazeGraph({
     svg.style('background', '#1A1107')
     const g = svg.append('g').attr('class', 'zoom-layer')
 
+    // 画面上端に固定する時間ルーラー（中身と一緒に動かず、常に日付が読める）
+    let renderRuler: (t: d3.ZoomTransform) => void = () => {}
+
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.02, 12])
       .on('zoom', event => {
         g.attr('transform', event.transform)
+        renderRuler(event.transform)
         const k = event.transform.k
         // Labels visible at k > 0.35
         const lOp = k > 0.35 ? Math.min(1, (k - 0.35) * 3) : 0
@@ -177,25 +298,26 @@ export default function MazeGraph({
         g.selectAll<SVGTextElement, unknown>('text.lane-label').attr('opacity', Math.min(1, k * 0.8))
         g.selectAll<SVGTextElement, unknown>('.milestone-label').attr('opacity', Math.min(1, k * 1.5))
         g.selectAll<SVGLineElement, unknown>('.milestone-gate').attr('opacity', Math.min(0.6, k * 0.8))
+        g.selectAll<SVGTextElement, unknown>('.gap-label').attr('opacity', k > 0.25 ? Math.min(0.75, k) : 0)
+        g.selectAll<SVGTextElement, unknown>('.time-label').attr('opacity', Math.min(0.6, k * 1.2))
       })
     svg.call(zoom)
     zoomRef.current = zoom
     nodesRef.current = nodes
 
     // ── Time & layout ─────────────────────────────────────
-    const timestamps = nodes.map(n => n.timestamp)
-    const tMin = Math.min(...timestamps)
-    const tMax = Math.max(...timestamps)
-    const tRange = tMax - tMin || 1
-    const spreadW = Math.min(W * 5, Math.max(W * 1.5, nodes.length * 18))
-    const xPos = (t: number) => ((t - tMin) / tRange) * spreadW
+    const axis = buildTimeAxis(nodes.map(n => n.timestamp))
+    const xPos = axis.pos
+    const spreadW = axis.total
 
     const maxLane = Math.max(1, ...nodes.map(n => Math.abs(n.lane)))
-    const laneH   = maxLane * LANE_HEIGHT
+    // レーンが少ないときは縦に広げ、多いときは詰める（キャンバスを使い切る）
+    const LH = Math.max(44, Math.min(120, (H * 0.66) / (maxLane * 2 + 1)))
+    const laneH   = maxLane * LH
 
     // ── Lane bands ────────────────────────────────────────
     for (let lane = -maxLane; lane <= maxLane; lane++) {
-      const yLane = lane * LANE_HEIGHT
+      const yLane = lane * LH
       const laneNodes = nodes.filter(n => n.lane === lane)
       if (laneNodes.length === 0 && lane !== 0) continue
 
@@ -205,13 +327,50 @@ export default function MazeGraph({
       g.append('rect')
         .attr('class', 'lane-band')
         .attr('x', -200)
-        .attr('y', yLane - LANE_HEIGHT / 2 + 6)
+        .attr('y', yLane - LH / 2 + 6)
         .attr('width', spreadW + 400)
-        .attr('height', LANE_HEIGHT - 12)
+        .attr('height', LH - 12)
         .attr('fill', bandColor)
         .attr('opacity', bandOp)
         .attr('rx', 6)
     }
+
+    // ── 止まっていた時間（3日以上あいた区間）────────────────
+    const gapTop = -(maxLane + 1) * LH - 30
+    const gapH   = (maxLane * 2 + 2) * LH + 60
+    axis.gaps.forEach(gap => {
+      g.append('rect')
+        .attr('class', 'time-gap')
+        .attr('x', gap.x1 + STEP_PX * 0.6)
+        .attr('y', gapTop)
+        .attr('width', Math.max(4, gap.x2 - gap.x1 - STEP_PX * 0.6))
+        .attr('height', gapH)
+        .attr('fill', '#0E0904')
+        .attr('opacity', 0.55)
+      g.append('text')
+        .attr('class', 'gap-label')
+        .attr('x', (gap.x1 + gap.x2) / 2 + STEP_PX * 0.3)
+        .attr('y', gapTop + 12)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#6B5537')
+        .attr('font-size', 8.5)
+        .attr('font-family', 'JetBrains Mono, monospace')
+        .attr('opacity', 0)
+        .text(`${gap.days}日`)
+    })
+
+    // ── 日付の目盛り ───────────────────────────────────────
+    const tickTop = gapTop - 16
+    const tickBottom = gapTop + gapH
+    axis.ticksIn(axis.time(0), axis.time(axis.total)).forEach(tick => {
+      g.append('line')
+        .attr('class', 'time-grid')
+        .attr('x1', tick.x).attr('y1', tickTop)
+        .attr('x2', tick.x).attr('y2', tickBottom)
+        .attr('stroke', '#D4A84A')
+        .attr('stroke-width', tick.major ? 1 : 0.6)
+        .attr('opacity', tick.major ? 0.13 : 0.06)
+    })
 
     // ── Main spine ────────────────────────────────────────
     const mainNodes = nodes.filter(n => n.isMainBranch).sort((a, b) => a.timestamp - b.timestamp)
@@ -233,8 +392,8 @@ export default function MazeGraph({
       const x1 = xPos(zone.startTimestamp)
       const x2 = xPos(zone.endTimestamp)
       const color = TYPE_COLOR[zone.theme] ?? '#D4A84A'
-      const bandTop = -(maxLane + 1) * LANE_HEIGHT - 24
-      const bandH   = (maxLane * 2 + 2) * LANE_HEIGHT + 48
+      const bandTop = -(maxLane + 1) * LH - 24
+      const bandH   = (maxLane * 2 + 2) * LH + 48
 
       // 帯背景
       g.append('rect')
@@ -263,10 +422,12 @@ export default function MazeGraph({
     })
 
     // ── Milestone gates (isMilestone nodes) ───────────────
-    const taggedNodes = nodes.filter(n => n.isMilestone)
+    // 大規模変更まで門にすると、ラベルが横一列に並んで潰れる。
+    // 門と札はタグ・バージョンだけにして、大規模変更はノード上の ⚡ に任せる。
+    const taggedNodes = nodes.filter(n => n.isMilestone && n.milestoneReason !== 'large_change')
     taggedNodes.forEach(n => {
       const x  = xPos(n.timestamp)
-      const gh = laneH + LANE_HEIGHT
+      const gh = laneH + LH
 
       // Gate line
       g.append('line')
@@ -284,9 +445,7 @@ export default function MazeGraph({
         ? n.tagNames.slice(0, 2)
         : n.milestoneReason === 'version'
           ? [n.message.match(/v\d+[\d.]+/)?.[0] ?? n.label]
-          : n.milestoneReason === 'large_change'
-            ? [`⚡ ${n.label}`]
-            : [n.label]
+          : [n.label]
 
       labels.forEach((tag, i) => {
         const yy = -gh - 10 - i * 18
@@ -328,7 +487,7 @@ export default function MazeGraph({
       g.append('text')
         .attr('class', 'lane-label')
         .attr('x', -30)
-        .attr('y', lane * LANE_HEIGHT + 4)
+        .attr('y', lane * LH + 4)
         .attr('text-anchor', 'end')
         .attr('fill', bandColor)
         .attr('font-size', 9)
@@ -495,12 +654,14 @@ export default function MazeGraph({
         .strength(d => d.type === 'parent' ? 0.85 : 0.35)
       )
       .force('charge', d3.forceManyBody<D3Node>()
-        .strength(-250).distanceMin(8).distanceMax(380)
+        .strength(-140).distanceMin(8).distanceMax(260)
       )
+      // 日付の目盛りを引いた以上、x は時間として読めなければ嘘になる。
+      // 以前より強く時間位置に留める（散らばりは y と衝突で逃がす）
       .force('x', d3.forceX<D3Node>(d => xPos(d.timestamp))
-        .strength(d => d.isMainBranch ? 0.5 : 0.22)
+        .strength(d => d.isMainBranch ? 0.9 : 0.6)
       )
-      .force('y', d3.forceY<D3Node>(d => d.lane * LANE_HEIGHT)
+      .force('y', d3.forceY<D3Node>(d => d.lane * LH)
         .strength(d => d.isMainBranch ? 0.75 : 0.38)
       )
       .force('collision', d3.forceCollide<D3Node>(d => nodeRadius(d) + 5))
@@ -514,10 +675,71 @@ export default function MazeGraph({
       nodeElems.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
 
+    // ── 時間ルーラー（画面固定・最前面）──────────────────
+    const RULER_H = 22
+    const rulerG = svg.append('g').attr('class', 'time-ruler')
+    rulerG.append('rect')
+      .attr('x', 0).attr('y', 0).attr('width', W).attr('height', RULER_H)
+      .attr('fill', '#140D05').attr('opacity', 0.92)
+    rulerG.append('line')
+      .attr('x1', 0).attr('y1', RULER_H).attr('x2', W).attr('y2', RULER_H)
+      .attr('stroke', '#3A2A15').attr('stroke-width', 1)
+    const rulerTicks = rulerG.append('g')
+
+    // いま画面に映っている期間（目盛りが疎でも必ず出る）
+    const rangeLabel = rulerG.append('text')
+      .attr('x', 10).attr('y', RULER_H - 7)
+      .attr('fill', '#D4A84A')
+      .attr('font-size', 9.5)
+      .attr('font-family', 'JetBrains Mono, monospace')
+      .attr('opacity', 0.85)
+
+    const fmt = (ms: number) => {
+      const d = new Date(ms)
+      return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+    }
+
+    renderRuler = (t: d3.ZoomTransform) => {
+      rangeLabel.text(`${fmt(axis.time(t.invertX(0)))} → ${fmt(axis.time(t.invertX(W)))}`)
+
+      // 画面内に入る目盛りだけを、重ならない間隔で描く
+      const visible: TimeTick[] = []
+      let lastX = 150   // 左端の期間ラベルと重ねない
+      for (const tick of axis.ticksIn(axis.time(t.invertX(0)), axis.time(t.invertX(W)))) {
+        const sx = t.applyX(tick.x)
+        if (sx < 0 || sx > W - 10) continue
+        if (sx - lastX < 58) continue
+        lastX = sx
+        visible.push({ x: sx, label: tick.label, major: tick.major })
+      }
+
+      const sel = rulerTicks.selectAll<SVGGElement, TimeTick>('g.tick')
+        .data(visible, d => d.label)
+      const enter = sel.enter().append('g').attr('class', 'tick')
+      enter.append('line')
+        .attr('y1', RULER_H - 6).attr('y2', RULER_H)
+        .attr('stroke', '#8B7355').attr('stroke-width', 1).attr('opacity', 0.7)
+      enter.append('text')
+        .attr('y', RULER_H - 9)
+        .attr('fill', '#B99A63')
+        .attr('font-size', 9.5)
+        .attr('font-family', 'JetBrains Mono, monospace')
+      sel.exit().remove()
+
+      const merged = enter.merge(sel)
+      merged.attr('transform', d => `translate(${d.x},0)`)
+      merged.select('text')
+        .attr('fill', d => d.major ? '#D4A84A' : '#B99A63')
+        .text(d => d.label)
+    }
+
+    // ズームが一度も起きなくてもルーラーを出す
+    renderRuler(d3.zoomTransform(svg.node()!))
+
     // 初回のみ自動フィット（フィルター変更では再フィットしない）
     let hasFit = false
     sim.on('end', () => {
-      if (!hasFit) { fitView(svg, g, zoom, nodes, W, H); hasFit = true }
+      if (!hasFit) { focusRecent(svg, zoom, nodes, W, H); hasFit = true }
     })
 
     if (selectedNodeId || highlightIds) applyHighlight(nodeElems, selectedNodeId, highlightIds)
@@ -634,10 +856,47 @@ function fitView(
   const minX = Math.min(...xs), maxX = Math.max(...xs)
   const minY = Math.min(...ys), maxY = Math.max(...ys)
   const gW = maxX - minX || 1, gH = maxY - minY || 1
-  const scale = Math.min(0.85, (W - 80) / (gW + 80), (H - 80) / (gH + 80))
-  const tx = W / 2 - scale * (minX + maxX) / 2
+
+  // 全体を1画面に押し込めると、履歴が長いリポジトリでは点の帯になって読めない。
+  // 縦は必ず収め、横は縮尺の下限（0.35）で止めて、収まらない分はスクロールに委ねる。
+  const fitAll = Math.min((W - 80) / (gW + 80), (H - 120) / (gH + 120))
+  const scale = Math.max(0.35, Math.min(1.1, fitAll))
+  const fitsHorizontally = gW * scale <= W - 80
+
+  // 横に収まらないときは最新（右端）を見せる。人が最初に知りたいのは直近だから。
+  const tx = fitsHorizontally
+    ? W / 2 - scale * (minX + maxX) / 2
+    : W - 60 - scale * maxX
   const ty = H / 2 - scale * (minY + maxY) / 2
-  svg.transition().duration(900).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+  svg.transition().duration(700).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+}
+
+/**
+ * 初期表示。全体を1画面に押し込むと点の帯になるので、読める倍率のまま
+ * いちばん新しい側を映す。全体像が見たいときは Home（fitView）がある。
+ */
+function focusRecent(
+  svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+  zoom: d3.ZoomBehavior<SVGSVGElement, unknown>,
+  nodes: D3Node[], W: number, H: number
+) {
+  const valid = nodes.filter(n => n.x !== undefined)
+  if (valid.length === 0) return
+  const xs = valid.map(n => n.x!), ys = valid.map(n => n.y!)
+  const minX = Math.min(...xs), maxX = Math.max(...xs)
+  const minY = Math.min(...ys), maxY = Math.max(...ys)
+  const gW = maxX - minX || 1, gH = maxY - minY || 1
+
+  // 縦は必ず収める。横は「直近70コミットぶんくらいが一画面に入る」を目安にする。
+  // 倍率を上げすぎると数十分ぶんしか映らず、どこを見ているのか分からなくなる。
+  const verticalFit = Math.min(1.1, (H - 140) / (gH + 100))
+  const targetW = Math.min(gW, 70 * STEP_PX)
+  const scale = Math.max(0.45, Math.min(verticalFit, (W - 100) / targetW))
+  const fits = gW * scale <= W - 100
+
+  const tx = fits ? W / 2 - scale * (minX + maxX) / 2 : W - 70 - scale * maxX
+  const ty = (H + 22) / 2 - scale * (minY + maxY) / 2
+  svg.transition().duration(700).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
 }
 
 function applyHighlight(

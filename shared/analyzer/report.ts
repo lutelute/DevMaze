@@ -1,6 +1,7 @@
 import type { AnalysisResult } from '../types'
 import { formatStruggles } from './struggle'
 import { formatHotspots } from './hotspot'
+import { formatActivity } from './activity'
 
 export interface ReportOptions {
   struggleLimit?: number
@@ -28,5 +29,7 @@ export function buildReport(result: AnalysisResult, opts: ReportOptions = {}): s
     formatStruggles(result.struggles.slice(0, struggleLimit), result.repoName, coverage),
     ``,
     formatHotspots(result.hotspots.slice(0, hotspotLimit), result.repoName),
+    ``,
+    formatActivity(result.activity, result.repoName),
   ].join('\n')
 }

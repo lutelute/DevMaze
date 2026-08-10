@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportReport: (repoPath: string): Promise<unknown> =>
     ipcRenderer.invoke('report:export', repoPath),
 
+  refreshRepo: (repoPath: string): Promise<unknown> =>
+    ipcRenderer.invoke('repo:refresh', repoPath),
+
+  openExternal: (url: string): Promise<unknown> =>
+    ipcRenderer.invoke('shell:openExternal', url),
+
   onProgress: (callback: (msg: string) => void) => {
     const listener = (_: unknown, msg: string) => callback(msg)
     ipcRenderer.on('repo:progress', listener)

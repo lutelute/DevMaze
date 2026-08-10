@@ -89,6 +89,60 @@ export async function ensureGithubRepo(
   return localPath
 }
 
+/** このパスが DevMaze の GitHub キャッシュ（bare repo）かどうか */
+export function isGithubCache(repoPath: string): boolean {
+  return repoPath.startsWith(githubReposDir())
+}
+
+/**
+ * リモートから取り込む。取り込めた新着コミット数を返す。
+ * ネットワークや認証で失敗しても解析は続けたいので、例外にせず error を返す。
+ */
+export async function fetchLatest(repoPath: string): Promise<{
+  fetched: boolean
+  newCommits: number
+  error?: string
+}> {
+  const bare = isGithubCache(repoPath)
+  const gitArgs = bare ? ['--git-dir', repoPath] : ['-C', repoPath]
+
+  const countCommits = async (): Promise<number> => {
+    try {
+      const { stdout } = await execFileAsync('git', [...gitArgs, 'rev-list', '--all', '--count'])
+      return parseInt(stdout.trim(), 10) || 0
+    } catch {
+      return 0
+    }
+  }
+
+  // リモートが無いリポジトリでは fetch する意味がない
+  try {
+    const { stdout } = await execFileAsync('git', [...gitArgs, 'remote'])
+    if (stdout.trim().length === 0) return { fetched: false, newCommits: 0 }
+  } catch {
+    return { fetched: false, newCommits: 0 }
+  }
+
+  const before = await countCommits()
+
+  try {
+    await execFileAsync('git', [
+      ...gitArgs, 'fetch', '--all', '--quiet', '--prune',
+      ...(bare ? ['--filter=blob:none', `--depth=${FETCH_DEPTH}`] : []),
+    ], {
+      timeout: 90_000,
+      // 認証を求められたまま固まらないようにする
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' },
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { fetched: false, newCommits: 0, error: msg.split('\n')[0].slice(0, 200) }
+  }
+
+  const after = await countCommits()
+  return { fetched: true, newCommits: Math.max(0, after - before) }
+}
+
 // ---- GitHub REST API ステータス取得 ----
 
 export interface RepoStatus {
