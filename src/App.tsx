@@ -499,6 +499,7 @@ export default function App() {
                   highlightIds={highlightIds}
                   struggleIds={struggleNodeIds}
                   struggleSeverity={struggleSeverity}
+                  struggles={result!.struggles}
                   unitOverride={unit}
                   onUnitChange={u => { pushHistory(); setUnit(u) }}
                   onClearFocus={() => setFocus(null)}

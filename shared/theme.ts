@@ -12,7 +12,16 @@
  *
  * shared/ は Electron と MCP の両方から読まれる純粋層なので、DOM に触らないこと。
  */
-import type { CommitType } from './types'
+import type { CommitType, StruggleKind } from './types'
+
+/** 沼の種別の記号と名前。サイドバーの一覧と迷路の帯で同じものを使う */
+export const STRUGGLE_META: Record<StruggleKind, { label: string; icon: string }> = {
+  revert_loop: { label: 'やり直しの輪',       icon: '↩︎' },
+  fix_chain:   { label: '修正の連鎖',         icon: '🔧' },
+  file_churn:  { label: '同じファイルの往復', icon: '🌀' },
+  wip_drift:   { label: 'WIP の漂流',         icon: '⋯'  },
+  stall_burst: { label: '停滞のあとの再開',   icon: '⏸'  },
+}
 
 export interface TypeStyle {
   /** 迷路の節点・凡例・フィルターで共通に使う色 */

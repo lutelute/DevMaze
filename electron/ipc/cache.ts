@@ -6,7 +6,7 @@ import type { AnalysisResult } from '../../shared/types'
 
 // 2: struggles（沼エピソード）を追加
 // 3: hotspots / activity / remoteUrl / node.refs を追加
-const CACHE_VERSION = 3
+const CACHE_VERSION = 4
 
 interface CacheEntry {
   version: number

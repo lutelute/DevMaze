@@ -240,6 +240,38 @@ export function parseNumstat(raw: string): Map<string, NumstatEntry> {
   return statsMap
 }
 
+/**
+ * numstat を分割して取り直す。
+ *
+ * `git log --all --numstat` は**最初に見つからないオブジェクトで止まる**ので、
+ * 1件でも欠けていると残り911件ぶんの差分まで一緒に失う。
+ * まとめて取る → 失敗したら半分に割る → 1件まで割って駄目ならその1件だけ諦める、
+ * とすると、欠けている数が少ないうちはほぼ全速のまま、取れるものは全部取れる。
+ */
+async function numstatInChunks(git: SimpleGit, hashes: string[]): Promise<string> {
+  const out: string[] = []
+  const stack: string[][] = []
+  const CHUNK = 200
+  for (let i = 0; i < hashes.length; i += CHUNK) stack.push(hashes.slice(i, i + CHUNK))
+
+  let dropped = 0
+  while (stack.length > 0) {
+    const batch = stack.pop()!
+    try {
+      out.push(await git.raw(['show', '--format=%H', '--numstat', ...batch]))
+    } catch {
+      if (batch.length === 1) { dropped++; continue }   // この1件だけ諦める
+      const mid = Math.floor(batch.length / 2)
+      stack.push(batch.slice(0, mid), batch.slice(mid))
+    }
+  }
+  if (dropped > 0) {
+    // 取得率は stats.fileStatsCoverage に出るので、ここでは黙って続ける。
+    // 「0件」と「見えていない」を取り違えさせないための数字はそちらが持っている。
+  }
+  return out.join('\n')
+}
+
 async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
   let rawStats: string
   try {
@@ -252,12 +284,19 @@ async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
       '--max-count=1000',
     ])
   } catch (err) {
-    // shallow clone (--depth)・--filter=blob:none・オブジェクト欠損のリポジトリでは、
-    // git が途中の "fatal: unable to read <sha>" で終了し、simple-git が例外を投げる。
-    // このとき既に出力されていた分は例外メッセージの中に残っているので拾い直す。
-    // 捨ててしまうと全コミットの stats が 0 になり、ファイル単位の検出（沼）が
+    // shallow clone (--depth)・部分クローン・オブジェクト欠損のリポジトリでは、
+    // git が途中の "fatal: could not fetch <sha> from promisor remote" で終了する。
+    // 捨ててしまうと全コミットの stats が 0 になり、ファイル単位の検出（沼・場所）が
     // 「検出なし」に化けて、見た目には正常に見えてしまう。
+    //
+    // 例外から部分出力を拾う手を先に試すが、**これは当てにならない**。
+    // simple-git はこの失敗で stdOut を持たず task だけを載せてくることがあり、
+    // 実測（AtelierX 912コミット）では救出できず取得率0%になっていた。
+    // そこで、当たった1件のせいで全部を失わないよう、分割して取り直す。
     rawStats = salvagePartialOutput(err)
+    if (!rawStats) {
+      rawStats = await numstatInChunks(git, commits.map(c => c.hash))
+    }
     if (!rawStats) return
   }
 

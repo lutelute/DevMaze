@@ -2,9 +2,11 @@ import {
   useEffect, useRef, useCallback, useMemo, useState, forwardRef, useImperativeHandle,
 } from 'react'
 import * as d3 from 'd3'
-import type { MazeGraph, MazeNode, MazeEdge, CommitType, Zone } from '../../shared/types'
+import type {
+  MazeGraph, MazeNode, MazeEdge, CommitType, Zone, StruggleEpisode,
+} from '../../shared/types'
 import { buildSessions, shouldAggregate } from '../../shared/analyzer/session'
-import { COMMIT_TYPE, severityColor } from '../../shared/theme'
+import { COMMIT_TYPE, severityColor, STRUGGLE_META } from '../../shared/theme'
 
 interface Props {
   graph: MazeGraph
@@ -17,6 +19,8 @@ interface Props {
   struggleIds?: Set<string>
   /** コミットごとの沼の深刻度（0-100）。印の強さに使う */
   struggleSeverity?: Map<string, number>
+  /** 沼エピソード。廊下に「ぬかるみ」の帯として敷く */
+  struggles?: StruggleEpisode[]
   /** まとまりを開いたとき（そのまとまりに属するコミットを強調させる） */
   onDrillDown?: (hashes: string[]) => void
   /** 表示単位を手で切り替えたときに、注目を解除する */
@@ -330,6 +334,7 @@ const ZONE_LABEL_COLOR = (theme: CommitType) => TYPE_COLOR[theme] ?? '#D4A84A'
 // ── Component ──────────────────────────────────────────────
 const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
   graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds, struggleSeverity,
+  struggles,
   onDrillDown, onClearFocus, unitOverride = null, onUnitChange,
 }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -645,6 +650,88 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
         .text(zone ? zone.label : leftToRight ? '→' : '←')
     }
 
+    // ── 沼を「廊下のぬかるみ」として敷く ────────────────────
+    //
+    // 元は該当コミットに同じ赤い破線の輪を1つずつ付けるだけだった。
+    // 12件の沼は同じ輪が12個並ぶだけで、「1つのエピソード」という単位が画面に無く、
+    // 深刻度・抜けたかどうか・再発も全部そこで潰れていた。
+    // エピソードを1つの帯として描き、変数ごとに別のチャネルに載せる。
+    if (struggles && struggles.length > 0) {
+      const bands = g.append('g').attr('class', 'struggle-bands')
+      const t0 = axis.time(0)
+      const t1 = axis.time(axis.total)
+      const bandH = layout.laneGap * 0.9
+
+      for (const e of struggles) {
+        // 表示範囲と重ならないエピソードは描かない。
+        // axis.pos は範囲外を端に丸めるので、そのまま描くと端に偽の帯が生える
+        if (e.endTimestamp < t0 || e.startTimestamp > t1) continue
+
+        const ax0 = axis.pos(Math.max(e.startTimestamp, t0))
+        const ax1 = Math.max(ax0 + 6, axis.pos(Math.min(e.endTimestamp, t1)))
+        const color = severityColor(e.severity)
+        const r0 = Math.min(layout.rows - 1, Math.floor(ax0 / layout.rowW))
+        const r1 = Math.min(layout.rows - 1, Math.floor(ax1 / layout.rowW))
+
+        for (let r = r0; r <= r1; r++) {
+          const segA = Math.max(ax0, r * layout.rowW) - r * layout.rowW
+          const segB = Math.min(ax1, (r + 1) * layout.rowW) - r * layout.rowW
+          // 奇数行は右→左に進むので、行内の位置を反転する
+          const xa = r % 2 === 0 ? segA : layout.rowW - segB
+          const xb = r % 2 === 0 ? segB : layout.rowW - segA
+          const y = layout.rowMid(r) - bandH / 2
+
+          // 箱で囲むと、30件が重なって赤い壁になり道が見えなくなる（実測）。
+          // ノードの下に敷く「ぬかるんだ地面」にする。縁取りはせず、
+          // 下端の線の太さだけに深刻度を載せる
+          bands.append('rect')
+            .attr('x', xa).attr('y', y)
+            .attr('width', Math.max(6, xb - xa)).attr('height', bandH)
+            .attr('rx', 6)
+            .attr('fill', color).attr('opacity', 0.05)
+            .attr('pointer-events', 'none')
+
+          bands.append('line')
+            .attr('x1', xa).attr('y1', y + bandH)
+            .attr('x2', Math.max(xa + 6, xb)).attr('y2', y + bandH)
+            .attr('stroke', color)
+            .attr('stroke-width', 1 + e.severity / 70)
+            .attr('stroke-linecap', 'round')
+            .attr('opacity', 0.45)
+            .attr('pointer-events', 'none')
+
+          // 終端の形が「抜けたかどうか」。閉じている＝門をくぐった、
+          // 開いている＝まだ抜けていない。凡例なしで読める唯一の符号化
+          if (r === r1) {
+            const endX = r % 2 === 0 ? xb : xa
+            if (e.escape) {
+              bands.append('line')
+                .attr('x1', endX).attr('y1', y + 3)
+                .attr('x2', endX).attr('y2', y + bandH - 3)
+                .attr('stroke', color).attr('stroke-width', 2.5)
+                .attr('opacity', 0.75).attr('pointer-events', 'none')
+            }
+          }
+
+          // 頭に種別の記号。再発しているなら「2/3」を添える
+          if (r === r0) {
+            const headX = r % 2 === 0 ? xa : xb
+            const meta = STRUGGLE_META[e.kind]
+            bands.append('text')
+              .attr('class', 'lane-label')
+              .attr('x', headX).attr('y', y - 3)
+              .attr('text-anchor', r % 2 === 0 ? 'start' : 'end')
+              .attr('fill', color).attr('font-size', 10)
+              .attr('font-family', 'JetBrains Mono, monospace')
+              .attr('opacity', 0).attr('pointer-events', 'none')
+              .text(e.recurrence
+                ? `${meta.icon} ${e.recurrence.index}/${e.recurrence.times}`
+                : meta.icon)
+          }
+        }
+      }
+    }
+
     // ── 止まっていた時間 ───────────────────────────────────
     const gapsG = g.append('g').attr('class', 'gaps')
     for (const gap of axis.gaps) {
@@ -732,9 +819,9 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
       .attr('pointer-events', 'none')
       .text(d => String(d.count))
 
-    // 沼マーカー。深刻度を「輪の太さ・濃さ・破線の粗さ」に載せる。
-    // 一様な輪だと 66件に同じ印が付くだけで、どこが深いのか読めない。
-    if (effectiveStruggle && effectiveStruggle.size > 0) {
+    // 沼マーカー。帯を出しているときは重ねない（同じことを二重に言わない）。
+    // 帯が無いとき（沼データが渡っていないとき）だけ、輪で最低限を示す。
+    if (effectiveStruggle && effectiveStruggle.size > 0 && !(struggles && struggles.length > 0)) {
       nodeElems.filter(d => effectiveStruggle.has(d.id))
         .append('circle')
         .attr('class', 'struggle-ring')
@@ -743,10 +830,10 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
         // 上限は控えめに。荒れたリポジトリでは深刻度100が大半で、
         // 目一杯まで振ると 66件すべてが最大の太さになって画面が赤く沈む（実測）
         .attr('stroke', d => severityColor(effectiveStruggle.get(d.id) ?? 50))
-        .attr('stroke-width', d => 1 + (effectiveStruggle.get(d.id) ?? 50) / 90)
+        .attr('stroke-width', 1)
         .attr('stroke-dasharray', d =>
           (effectiveStruggle.get(d.id) ?? 50) >= 75 ? '4,2.5' : '2,2.5')
-        .attr('opacity', d => 0.3 + (effectiveStruggle.get(d.id) ?? 50) / 400)
+        .attr('opacity', 0.4)
         .attr('pointer-events', 'none')
     }
 
@@ -983,7 +1070,7 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
     }
 
     return () => { sim.stop() }
-  }, [nodes, links, handleNodeClick, effectiveStruggle, unit, size.w, size.h])
+  }, [nodes, links, handleNodeClick, effectiveStruggle, struggles, unit, size.w, size.h])
 
   useEffect(() => {
     if (!svgRef.current) return
