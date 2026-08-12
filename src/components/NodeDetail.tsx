@@ -1,4 +1,5 @@
 import type { MazeNode, CommitType, StruggleEpisode, FileHotspot } from '../../shared/types'
+import { COMMIT_TYPE } from '../../shared/theme'
 
 interface Props {
   node: MazeNode
@@ -29,19 +30,11 @@ const STRUGGLE_LABEL: Record<StruggleEpisode['kind'], string> = {
   stall_burst: '停滞のあとの再開',
 }
 
-const TYPE_LABELS: Record<CommitType, { label: string; color: string }> = {
-  normal:    { label: '通常コミット',     color: '#D4A84A' },
-  feature:   { label: '機能追加',         color: '#7B9E5A' },
-  error_fix: { label: 'バグ修正',         color: '#C0624B' },
-  revert:    { label: 'リバート',         color: '#C88B3A' },
-  merge:     { label: 'マージ',           color: '#8B7355' },
-  wip:       { label: 'WIP',              color: '#B8A06A' },
-  release:   { label: 'リリース',         color: '#E8C060' },
-  chore:     { label: '環境整備',         color: '#8B9BAA' },
-  docs:      { label: 'ドキュメント',     color: '#7A9BB8' },
-  refactor:  { label: 'リファクタリング', color: '#9B8EC4' },
-  test:      { label: 'テスト',           color: '#6AAF9E' },
-}
+// 色とラベルは shared/theme.ts が唯一の出どころ。
+// 元はここにも写しがあって、merge の色と normal のラベルが他とずれていた
+const TYPE_LABELS = Object.fromEntries(
+  Object.entries(COMMIT_TYPE).map(([k, v]) => [k, { label: v.label, color: v.hex }]),
+) as Record<CommitType, { label: string; color: string }>
 
 export default function NodeDetail({
   node, onClose, struggles = [], hotspots = [], onSelectStruggle, onSelectFile, remoteUrl,
@@ -268,9 +261,11 @@ export default function NodeDetail({
   )
 }
 
+// 見出しは「コミットメッセージ」等の和文。uppercase は効かないうえ、
+// 0.8px の字間は和文だと「統 計」のように間延びする
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6 }}>
+    <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', marginBottom: 6 }}>
       {children}
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { MazeNode, CommitType } from '../../shared/types'
+import { COMMIT_TYPE } from '../../shared/theme'
 
 interface Props {
   nodes: MazeNode[]
@@ -8,11 +9,10 @@ interface Props {
   onClose: () => void
 }
 
-const TYPE_COLOR: Record<CommitType, string> = {
-  normal: '#D4A84A', feature: '#7B9E5A', error_fix: '#C0624B', revert: '#C88B3A',
-  merge: '#8B7355', wip: '#B8A06A', release: '#E8C060', chore: '#8B9BAA',
-  docs: '#7A9BB8', refactor: '#9B8EC4', test: '#6AAF9E',
-}
+// 色は shared/theme.ts が唯一の出どころ
+const TYPE_COLOR = Object.fromEntries(
+  Object.entries(COMMIT_TYPE).map(([k, v]) => [k, v.hex]),
+) as Record<CommitType, string>
 
 const MAX_RESULTS = 40
 

@@ -3,6 +3,7 @@ import type {
   AnalysisResult, CommitType, StruggleEpisode, StruggleKind, FileHotspot,
 } from '../../shared/types'
 import ScoreCard from './ScoreCard'
+import { COMMIT_TYPE, severityColor } from '../../shared/theme'
 
 interface Props {
   result: AnalysisResult | null
@@ -19,19 +20,10 @@ interface Props {
 
 type Tab = 'overview' | 'struggles' | 'hotspots' | 'repos'
 
-const TYPE_META: Record<CommitType, { label: string; color: string }> = {
-  normal:    { label: '通常',           color: '#D4A84A' },
-  feature:   { label: '機能追加',       color: '#7B9E5A' },
-  error_fix: { label: 'バグ修正',       color: '#C0624B' },
-  revert:    { label: 'リバート',       color: '#C88B3A' },
-  merge:     { label: 'マージ',         color: '#8B7355' },
-  wip:       { label: 'WIP',            color: '#B8A06A' },
-  release:   { label: 'リリース',       color: '#E8C060' },
-  chore:     { label: '環境整備',       color: '#8B9BAA' },
-  docs:      { label: 'ドキュメント',   color: '#7A9BB8' },
-  refactor:  { label: 'リファクタ',    color: '#9B8EC4' },
-  test:      { label: 'テスト',         color: '#6AAF9E' },
-}
+// 色と短い名前は shared/theme.ts が唯一の出どころ
+const TYPE_META = Object.fromEntries(
+  Object.entries(COMMIT_TYPE).map(([k, v]) => [k, { label: v.short, color: v.hex }]),
+) as Record<CommitType, { label: string; color: string }>
 
 const ZONE_ICON: Partial<Record<CommitType, string>> = {
   feature: '🌱', error_fix: '🔧', refactor: '♻️', release: '🚀', wip: '🌀',
@@ -57,12 +49,6 @@ const TAB_GLYPH: Record<Tab, string> = {
   overview: '概', struggles: '沼', hotspots: '場', repos: '歴',
 }
 
-function severityColor(severity: number): string {
-  if (severity >= 75) return '#C0624B'
-  if (severity >= 50) return '#C88B3A'
-  if (severity >= 30) return '#D4A84A'
-  return '#8B7355'
-}
 
 function repoLabel(repoPath: string): string {
   const name = repoPath.split('/').pop() ?? repoPath
@@ -554,7 +540,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div>
       <div style={{
-        fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px',
+        fontSize: 10, fontWeight: 600, letterSpacing: '0.02em',
         color: 'var(--text-dim)', marginBottom: 6,
       }}>
         {title}

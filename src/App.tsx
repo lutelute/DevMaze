@@ -408,7 +408,7 @@ export default function App() {
                   position: 'absolute', top: 12, left: 12, zIndex: 12,
                   display: 'flex', alignItems: 'center', gap: 6, height: 26,
                   background: 'rgba(26,17,7,0.86)', backdropFilter: 'blur(8px)',
-                  border: '1px solid #5E4322', borderRadius: 8, padding: '0 6px',
+                  border: '1px solid var(--border-interactive)', borderRadius: 8, padding: '0 6px',
                   // 上中央のビュー切替（幅150px前後）に食い込まないところで止める
                   maxWidth: 'calc(50% - 100px)',
                 }}>
@@ -419,7 +419,7 @@ export default function App() {
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       width: 24, height: 20, borderRadius: 5,
-                      border: '1px solid #85632F', background: 'transparent',
+                      border: '1px solid var(--border-interactive)', background: 'transparent',
                       color: past.length ? 'var(--text-secondary)' : 'var(--text-disabled)',
                       opacity: past.length ? 1 : 0.35,
                       fontSize: 12, lineHeight: 1, flexShrink: 0,
@@ -454,7 +454,7 @@ export default function App() {
                       onClick={goForward}
                       title="さっきの場所へ（⌘]）"
                       style={{
-                        background: 'transparent', border: '1px solid #85632F', borderRadius: 5,
+                        background: 'transparent', border: '1px solid var(--border-interactive)', borderRadius: 5,
                         padding: '1px 8px', color: 'var(--text-secondary)',
                         fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0,
                       }}

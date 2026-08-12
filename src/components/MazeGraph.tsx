@@ -4,6 +4,7 @@ import {
 import * as d3 from 'd3'
 import type { MazeGraph, MazeNode, MazeEdge, CommitType, Zone } from '../../shared/types'
 import { buildSessions, shouldAggregate } from '../../shared/analyzer/session'
+import { COMMIT_TYPE, severityColor } from '../../shared/theme'
 
 interface Props {
   graph: MazeGraph
@@ -37,20 +38,10 @@ type Aggregatable = MazeNode & { count?: number; memberHashes?: string[] }
 type D3Node = Aggregatable & d3.SimulationNodeDatum
 type D3Link = { id: string; source: D3Node; target: D3Node; type: MazeEdge['type'] }
 
-// ── Color palette (Sand/Earth) ─────────────────────────────
-const TYPE_COLOR: Record<CommitType, string> = {
-  normal:    '#D4A84A',
-  feature:   '#7B9E5A',
-  error_fix: '#C0624B',
-  revert:    '#C88B3A',
-  merge:     '#A88B5A',
-  wip:       '#B8A06A',
-  release:   '#E8C060',
-  chore:     '#8B9BAA',
-  docs:      '#7A9BB8',
-  refactor:  '#9B8EC4',
-  test:      '#6AAF9E',
-}
+// 色は shared/theme.ts が唯一の出どころ（5箇所に写して食い違わせないため）
+const TYPE_COLOR = Object.fromEntries(
+  Object.entries(COMMIT_TYPE).map(([k, v]) => [k, v.hex]),
+) as Record<CommitType, string>
 
 const EDGE_COLOR: Record<MazeEdge['type'], string> = {
   parent:       '#5A3D1E',
@@ -335,14 +326,6 @@ function hexagon(r: number): string {
 }
 
 const ZONE_LABEL_COLOR = (theme: CommitType) => TYPE_COLOR[theme] ?? '#D4A84A'
-
-// 深刻度の階調。サイドバーの severityColor と同じ閾値で、迷路と一覧で同じ色が同じ意味になる
-function severityStroke(severity: number): string {
-  if (severity >= 75) return '#E0533A'
-  if (severity >= 50) return '#C0624B'
-  if (severity >= 30) return '#9E6247'
-  return '#7A5A45'
-}
 
 // ── Component ──────────────────────────────────────────────
 const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
@@ -654,10 +637,11 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
         .attr('x', leftToRight ? -30 : layout.rowW + 30)
         .attr('y', layout.rowMid(row) + 10)
         .attr('text-anchor', leftToRight ? 'end' : 'start')
+        // 元は text-dim(2.37) に opacity 0.5 を重ねて実効 1.46 だった。
+        // 暗いテーマでは重ね掛けをやめて色を直接置くほうが読める
         .attr('fill', 'var(--text-dim)')
         .attr('font-size', 9)
         .attr('font-family', 'JetBrains Mono, monospace')
-        .attr('opacity', 0.5)
         .text(zone ? zone.label : leftToRight ? '→' : '←')
     }
 
@@ -756,11 +740,13 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
         .attr('class', 'struggle-ring')
         .attr('r', d => nodeRadius(d) + 4)
         .attr('fill', 'none')
-        .attr('stroke', d => severityStroke(effectiveStruggle.get(d.id) ?? 50))
-        .attr('stroke-width', d => 1 + (effectiveStruggle.get(d.id) ?? 50) / 40)
+        // 上限は控えめに。荒れたリポジトリでは深刻度100が大半で、
+        // 目一杯まで振ると 66件すべてが最大の太さになって画面が赤く沈む（実測）
+        .attr('stroke', d => severityColor(effectiveStruggle.get(d.id) ?? 50))
+        .attr('stroke-width', d => 1 + (effectiveStruggle.get(d.id) ?? 50) / 90)
         .attr('stroke-dasharray', d =>
-          (effectiveStruggle.get(d.id) ?? 50) >= 75 ? '5,2' : '2,2.5')
-        .attr('opacity', d => 0.35 + (effectiveStruggle.get(d.id) ?? 50) / 200)
+          (effectiveStruggle.get(d.id) ?? 50) >= 75 ? '4,2.5' : '2,2.5')
+        .attr('opacity', d => 0.3 + (effectiveStruggle.get(d.id) ?? 50) / 400)
         .attr('pointer-events', 'none')
     }
 
@@ -917,7 +903,7 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
       .attr('cy', d => layout.pos(d.timestamp, laneOf(d.lane)).y)
       .attr('r', Math.max(2.5, 3 / mmScale))
       .attr('fill', d => effectiveStruggle?.has(d.id)
-        ? severityStroke(effectiveStruggle.get(d.id)!) : TYPE_COLOR[d.type])
+        ? severityColor(effectiveStruggle.get(d.id)!) : TYPE_COLOR[d.type])
       .attr('opacity', 0.75)
 
     const mmView = mm.append('rect')
@@ -1155,7 +1141,7 @@ function ZoomBtn({ onClick, title, children }: {
       onClick={onClick}
       title={title}
       style={{
-        background: 'transparent', border: '1px solid var(--border)', borderRadius: 5,
+        background: 'transparent', border: '1px solid var(--border-interactive)', borderRadius: 5,
         width: 22, height: 22, cursor: 'pointer', color: 'var(--text-secondary)',
         fontSize: 12, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}

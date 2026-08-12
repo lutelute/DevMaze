@@ -7,6 +7,7 @@
  */
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import type { MazeGraph, MazeNode, CommitType } from '../../shared/types'
+import { COMMIT_TYPE } from '../../shared/theme'
 
 interface Props {
   graph: MazeGraph
@@ -36,19 +37,11 @@ function colsFor(n: number, viewW: number, viewH: number): number {
   return Math.max(3, Math.min(n, cols))
 }
 
-const TYPE_COLOR: Record<CommitType, string> = {
-  normal:    '#D4A84A',
-  feature:   '#7B9E5A',
-  error_fix: '#C0624B',
-  revert:    '#C88B3A',
-  merge:     '#8B7355',
-  wip:       '#B8A06A',
-  release:   '#E8C060',
-  chore:     '#8B9BAA',
-  docs:      '#7A9BB8',
-  refactor:  '#9B8EC4',
-  test:      '#6AAF9E',
-}
+// 色は shared/theme.ts が唯一の出どころ。
+// 元はここに写しがあって、merge だけ MazeGraph(#A88B5A) と食い違っていた
+const TYPE_COLOR = Object.fromEntries(
+  Object.entries(COMMIT_TYPE).map(([k, v]) => [k, v.hex]),
+) as Record<CommitType, string>
 
 /* ── component ─────────────────────────────────── */
 export default function MazeModeView({
@@ -324,7 +317,7 @@ export default function MazeModeView({
               onClick={b.onClick}
               title={b.title}
               style={{
-                background: 'transparent', border: '1px solid var(--border)', borderRadius: 5,
+                background: 'transparent', border: '1px solid var(--border-interactive)', borderRadius: 5,
                 width: 22, height: 22, cursor: 'pointer', color: 'var(--text-secondary)',
                 fontSize: 12, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}

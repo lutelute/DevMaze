@@ -21,15 +21,25 @@
   --bg-hover:      #33200E;
   --bg-active:     #3D2810;
 
-  /* Border */
+  /* Border
+     --border(1.28) は区切り線としては妥当だが、塗りが透明なボタンの輪郭にも
+     流用されていた。WCAG 1.4.11 は操作できる要素の境界に 3:1 を求めるので分ける。 */
   --border:        #3A2410;
   --border-subtle: #271608;
+  --border-interactive: #85632F;   /* 3.39 : ボタン・入力の輪郭 */
 
-  /* Text */
+  /* Text
+     bg-base(#1A1107) に対するコントラスト比（WCAG 2.1 の相対輝度式で実測）:
+       text-primary   14.76  AAA
+       text-secondary  5.46  AA
+       text-dim        4.55  AA   ← 元は #634E32 で 2.37（AA も AA-large も割っていた）
+       text-disabled   2.71       ← 元は #3E2E1A で 1.43（ほぼ不可視）
+     text-dim は補助情報どころか、凡例の見出し・まとまりの日付・沼の期間と件数・
+     ホットスポットの内訳・検索結果のハッシュと、主要な情報の担い手になっている。 */
   --text-primary:   #F0E4C8;
   --text-secondary: #A08858;
-  --text-dim:       #634E32;
-  --text-disabled:  #3E2E1A;
+  --text-dim:       #93795A;
+  --text-disabled:  #6B573C;
 
   /* Accent */
   --accent:        #D4A84A;
