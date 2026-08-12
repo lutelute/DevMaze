@@ -1,4 +1,6 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
+import {
+  useEffect, useRef, useCallback, useMemo, useState, forwardRef, useImperativeHandle,
+} from 'react'
 import * as d3 from 'd3'
 import type { MazeGraph, MazeNode, MazeEdge, CommitType, Zone } from '../../shared/types'
 import { buildSessions, shouldAggregate } from '../../shared/analyzer/session'
@@ -12,10 +14,22 @@ interface Props {
   highlightIds?: Set<string>
   /** 何らかの沼に属するコミット全体。常時マーカーを出す */
   struggleIds?: Set<string>
+  /** コミットごとの沼の深刻度（0-100）。印の強さに使う */
+  struggleSeverity?: Map<string, number>
   /** まとまりを開いたとき（そのまとまりに属するコミットを強調させる） */
   onDrillDown?: (hashes: string[]) => void
   /** 表示単位を手で切り替えたときに、注目を解除する */
   onClearFocus?: () => void
+  /** 表示単位。戻る操作で巻き戻せるよう App が持つ */
+  unitOverride?: 'commit' | 'session' | null
+  onUnitChange?: (unit: 'commit' | 'session') => void
+}
+
+/** 戻る操作のために、カメラ（拡大位置）を外から読み書きする口 */
+export interface MazeGraphHandle {
+  getCamera: () => { x: number; y: number; k: number } | null
+  /** 次に描き直すとき、全体表示ではなくこの位置を復元する */
+  queueCamera: (c: { x: number; y: number; k: number } | null) => void
 }
 
 // まとまり表示のときは、複数コミットを1つのノードとして扱う（count > 1）
@@ -51,6 +65,19 @@ const EDGE_DASH: Record<MazeEdge['type'], string> = {
 }
 
 const DISPLAY_LIMITS = [80, 150, 300, 1000] as const
+
+// 行頭の日付・フェーズ名は行の外側に出る（実測 89px）。ここを見込まずに全体表示を
+// 計算すると、横は詰まりすぎ・縦は余りすぎになる。画面の縁との余白は上下左右そろえる。
+const FIT_SIDE = 96
+const FIT_PAD = 40
+
+/** 全体表示の縮尺。折り返し方の探索と実際の fit で同じ式を使う */
+function fitScale(width: number, height: number, viewportW: number, viewportH: number): number {
+  return Math.min(
+    (viewportW - FIT_PAD * 2) / (width + FIT_SIDE * 2),
+    (viewportH - FIT_PAD * 2) / height,
+  )
+}
 
 const HOUR = 3600_000
 const DAY = 24 * HOUR
@@ -171,7 +198,12 @@ function weekOf(d: Date): number {
 // 画面を使い切れて、道として読めるようになる（= 迷路）。
 interface Layout {
   rowW: number
-  rowH: number
+  /** 行ごとの高さ。枝の無い行は低い */
+  rowH: (row: number) => number
+  /** 行の上端。高さが行ごとに違うので累積和で持つ */
+  rowTop: (row: number) => number
+  /** その行のレーン0の線。枝が片側にしか出ていない行では行の中心とずれる */
+  rowMid: (row: number) => number
   laneGap: number
   rows: number
   pos: (t: number, lane: number) => { x: number; y: number }
@@ -182,24 +214,60 @@ interface Layout {
 }
 
 function buildLayout(
-  axis: TimeAxis, maxLane: number, viewportW: number, viewportH: number, aggregated = false,
+  axis: TimeAxis, items: { t: number; lane: number }[],
+  viewportW: number, viewportH: number, aggregated = false,
 ): Layout {
   const laneGap = aggregated ? 40 : 46
   // コミット表示は塊が縦に膨らむので余白を厚く、まとまり表示は薄くて足りる
-  const rowH = (maxLane * 2 + 1) * laneGap + (aggregated ? 58 : 130)
+  const padV = aggregated ? 58 : 130
+
+  // 行の高さを「全体の最大レーン」で左右対称に取ると、二重に空間を捨てる。
+  // (1) 枝が1本も出ていない行にも枝ぶんを確保する
+  // (2) 枝が片側にしか出ていなくても、反対側にも同じだけ確保する
+  // 実測（897件・6行）: 確保178px に対して点は118pxぶんしかなく、
+  // しかも空きは全部「上側」に寄っていた（上76px / 下0px）＝上のレーンが未使用。
+  // 行ごと・上下別々に、実際に使っているレーンだけで高さを決める。
+  const measure = (r: number) => {
+    const rowW = Math.max(560, axis.total / r)
+    const ups = new Array<number>(r).fill(0)     // lane < 0（上に出る枝）
+    const downs = new Array<number>(r).fill(0)   // lane > 0（下に出る枝）
+    for (const it of items) {
+      const row = Math.min(r - 1, Math.floor(axis.pos(it.t) / rowW))
+      if (it.lane < 0) ups[row] = Math.max(ups[row], -it.lane)
+      else if (it.lane > 0) downs[row] = Math.max(downs[row], it.lane)
+    }
+    const heights = ups.map((u, i) => (u + downs[i] + 1) * laneGap + padV)
+    // その行の「レーン0の線」が行の上端から何pxの位置に来るか
+    const mids = ups.map(u => padV / 2 + (u + 0.5) * laneGap)
+    return { rowW, heights, mids, total: heights.reduce((a, b) => a + b, 0) }
+  }
 
   // 行の長さを画面幅に固定すると、行数が増えて縦に長くなり、
   // 全体表示のときに縮尺が縦で頭打ちになる（実測: 9行で48%）。
   // 行数を変えながら「いちばん大きく映せる分け方」を選ぶ。横長の行も許す。
   let rows = 1
   let rowW = axis.total
+  let heights: number[] = [padV + laneGap]
+  let mids: number[] = [padV / 2 + laneGap / 2]
   let bestScale = -1
   for (let r = 1; r <= 16; r++) {
-    const w = Math.max(560, axis.total / r)
-    const h = r * rowH
-    const scale = Math.min((viewportW - 150) / (w + 120), (viewportH - 90) / (h + 60))
-    if (scale > bestScale) { bestScale = scale; rows = r; rowW = w }
+    const m = measure(r)
+    const scale = fitScale(m.rowW, m.total, viewportW, viewportH)
+    if (scale > bestScale) {
+      bestScale = scale; rows = r; rowW = m.rowW; heights = m.heights; mids = m.mids
+    }
   }
+
+  const tops: number[] = []
+  let acc = 0
+  for (const h of heights) { tops.push(acc); acc += h }
+  const height = acc
+
+  const clamp = (row: number) => Math.max(0, Math.min(rows - 1, row))
+  const rowH = (row: number) => heights[clamp(row)]
+  const rowTop = (row: number) => tops[clamp(row)]
+  /** その行のレーン0の線（行の中心ではない。枝が片側だけなら中心からずれる） */
+  const rowMid = (row: number) => tops[clamp(row)] + mids[clamp(row)]
 
   const place = (ax: number) => {
     const row = Math.min(rows - 1, Math.floor(ax / rowW))
@@ -209,12 +277,12 @@ function buildLayout(
   }
 
   return {
-    rowW, rowH, laneGap, rows,
+    rowW, rowH, rowTop, rowMid, laneGap, rows,
     width: rowW,
-    height: rows * rowH,
+    height,
     pos: (t, lane) => {
       const { row, x } = place(axis.pos(t))
-      return { x, y: row * rowH + rowH / 2 + lane * laneGap }
+      return { x, y: rowMid(row) + lane * laneGap }
     },
     rowOf: t => place(axis.pos(t)).row,
     rowStart: row => {
@@ -222,7 +290,7 @@ function buildLayout(
       const ax = row * rowW
       return {
         x: row % 2 === 0 ? 0 : rowW,
-        y: row * rowH + rowH / 2,
+        y: rowMid(row),
         time: axis.time(ax),
       }
     },
@@ -268,19 +336,58 @@ function hexagon(r: number): string {
 
 const ZONE_LABEL_COLOR = (theme: CommitType) => TYPE_COLOR[theme] ?? '#D4A84A'
 
+// 深刻度の階調。サイドバーの severityColor と同じ閾値で、迷路と一覧で同じ色が同じ意味になる
+function severityStroke(severity: number): string {
+  if (severity >= 75) return '#E0533A'
+  if (severity >= 50) return '#C0624B'
+  if (severity >= 30) return '#9E6247'
+  return '#7A5A45'
+}
+
 // ── Component ──────────────────────────────────────────────
-export default function MazeGraph({
-  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds,
-  onDrillDown, onClearFocus,
-}: Props) {
+const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
+  graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds, struggleSeverity,
+  onDrillDown, onClearFocus, unitOverride = null, onUnitChange,
+}: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
   const nodesRef = useRef<D3Node[]>([])
   const layoutRef = useRef<Layout | null>(null)
+  const pendingCamera = useRef<{ x: number; y: number; k: number } | null>(null)
+  // 前回どの「地図」を描いたか。同じ地図なら拡大位置を保つ（作り直すたびに
+  // 全体表示へ戻していたので、沼を1件選んだだけで拡大が解除されていた）
+  const genRef = useRef<string>('')
   const [displayLimit, setDisplayLimit] = useState<number>(150)
   const [zoomPct, setZoomPct] = useState(100)
-  // null = 件数に応じて自動で決める（900件を1件ずつ描いても全体は読めない）
-  const [unitOverride, setUnitOverride] = useState<'commit' | 'session' | null>(null)
+  // キャンバスの大きさ。サイドバーを畳んだり詳細パネルを開いたりすると変わるので、
+  // 変わったら折り返し方を選び直す（元は起動時に一度計算したきりだった）
+  const [size, setSize] = useState({ w: 0, h: 0 })
+
+  useImperativeHandle(ref, () => ({
+    getCamera: () => {
+      if (!svgRef.current) return null
+      const t = d3.zoomTransform(svgRef.current)
+      return { x: t.x, y: t.y, k: t.k }
+    },
+    queueCamera: c => { pendingCamera.current = c },
+  }), [])
+
+  // 大きさの変化を拾う。小さな揺れで作り直さないよう 24px の閾値を置く
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const apply = () => {
+      const r = el.getBoundingClientRect()
+      setSize(prev =>
+        Math.abs(prev.w - r.width) > 24 || Math.abs(prev.h - r.height) > 24
+          ? { w: r.width, h: r.height } : prev)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const { nodes, links, totalCount, unit, sessionCount } = useMemo(() => {
     const filtered = filterTypes.size === 0
@@ -375,10 +482,37 @@ export default function MazeGraph({
     return mapped.size > 0 ? mapped : undefined
   }, [highlightIds, nodes, unit])
 
+  // 沼マーカーも同じ読み替えが要る。struggleIds はコミットのハッシュで来るので、
+  // まとまり表示（200件超は自動でこちら）では ID が session_N になって1件も一致せず、
+  // **既定の画面から沼の印が丸ごと消える**（897件のリポジトリで実測: 0個）。
+  // ただし「1件でも含む」で付けると、荒れたリポジトリでは 102 中 85 に付いて
+  // ミニマップが真っ赤になり、印として何も言わなくなる（実測）。
+  // そのまとまりの**過半**が沼のコミットのときだけ「ここで詰まっていた」と見なす。
+  // 値は深刻度(0-100)。有無だけだと 66件に一様な印が付いて「どこで詰まったか」を指せない。
+  const effectiveStruggle = useMemo(() => {
+    if (!struggleIds || struggleIds.size === 0) return undefined
+    const sev = (h: string) => struggleSeverity?.get(h) ?? 50
+    const mapped = new Map<string, number>()
+    if (unit === 'commit') {
+      for (const n of nodes) if (struggleIds.has(n.id)) mapped.set(n.id, sev(n.id))
+      return mapped
+    }
+    for (const n of nodes) {
+      const members = n.memberHashes
+      if (!members || members.length === 0) continue
+      const hits = members.filter(h => struggleIds.has(h))
+      // そのまとまりの過半が沼のコミットのときだけ「ここで詰まっていた」と見なす
+      if (hits.length * 2 > members.length) {
+        mapped.set(n.id, Math.max(...hits.map(sev)))
+      }
+    }
+    return mapped
+  }, [struggleIds, struggleSeverity, nodes, unit])
+
   const handleNodeClick = useCallback((node: D3Node) => {
-    // まとまりをクリックしたら、その中のコミットに降りる（意味的なズーム）
+    // まとまりをクリックしたら、その中のコミットに降りる（意味的なズーム）。
+    // 表示単位の切替も App 側でまとめてやる（履歴に2件積まれないように）
     if (node.memberHashes && node.memberHashes.length > 0) {
-      setUnitOverride('commit')
       onDrillDown?.(node.memberHashes)
       return
     }
@@ -402,8 +536,8 @@ export default function MazeGraph({
     svg.selectAll('*').remove()
 
     const container = svgRef.current!
-    const W = container.clientWidth || 900
-    const H = container.clientHeight || 600
+    const W = Math.round(size.w) || container.clientWidth || 900
+    const H = Math.round(size.h) || container.clientHeight || 600
     if (nodes.length === 0) return
 
     const aggregated = unit === 'session'
@@ -412,8 +546,8 @@ export default function MazeGraph({
     // 俯瞰では枝を ±1 に畳む（道として読ませたい）。コミット表示は ±3 まで残す
     const laneIndex = compactLanes(nodes.map(n => n.lane), aggregated ? 1 : 3)
     const laneOf = (lane: number) => laneIndex.get(lane) ?? 0
-    const maxLane = Math.max(1, ...[...laneIndex.values()].map(Math.abs))
-    const layout = buildLayout(axis, maxLane, W, H, aggregated)
+    const layoutItems = nodes.map(n => ({ t: n.timestamp, lane: laneOf(n.lane) }))
+    const layout = buildLayout(axis, layoutItems, W, H, aggregated)
     layoutRef.current = layout
     nodesRef.current = nodes
 
@@ -476,24 +610,26 @@ export default function MazeGraph({
     for (let row = 0; row < layout.rows; row++) {
       const start = layout.rowStart(row)!
       const endTime = layout.rowStart(row + 1)?.time ?? axis.time(axis.total)
+      const top = layout.rowTop(row)
+      const h = layout.rowH(row)
       // その行の期間を支配する開発フェーズの色で廊下を染める
       const zone = zones.find(z => z.startTimestamp <= endTime && z.endTimestamp >= start.time)
       const tint = zone ? ZONE_LABEL_COLOR(zone.theme) : '#D4A84A'
 
       corridors.append('rect')
         .attr('x', -26)
-        .attr('y', row * layout.rowH + 14)
+        .attr('y', top + 14)
         .attr('width', layout.rowW + 52)
-        .attr('height', layout.rowH - 28)
+        .attr('height', h - 28)
         .attr('rx', 14)
         .attr('fill', tint)
         .attr('opacity', row % 2 === 0 ? 0.045 : 0.03)
 
       corridors.append('rect')
         .attr('x', -26)
-        .attr('y', row * layout.rowH + 14)
+        .attr('y', top + 14)
         .attr('width', layout.rowW + 52)
-        .attr('height', layout.rowH - 28)
+        .attr('height', h - 28)
         .attr('rx', 14)
         .attr('fill', 'none')
         .attr('stroke', tint)
@@ -505,7 +641,7 @@ export default function MazeGraph({
       const leftToRight = row % 2 === 0
       corridors.append('text')
         .attr('x', leftToRight ? -30 : layout.rowW + 30)
-        .attr('y', row * layout.rowH + layout.rowH / 2 - 4)
+        .attr('y', layout.rowMid(row) - 4)
         .attr('text-anchor', leftToRight ? 'end' : 'start')
         .attr('fill', tint)
         .attr('font-size', 11)
@@ -516,7 +652,7 @@ export default function MazeGraph({
 
       corridors.append('text')
         .attr('x', leftToRight ? -30 : layout.rowW + 30)
-        .attr('y', row * layout.rowH + layout.rowH / 2 + 10)
+        .attr('y', layout.rowMid(row) + 10)
         .attr('text-anchor', leftToRight ? 'end' : 'start')
         .attr('fill', 'var(--text-dim)')
         .attr('font-size', 9)
@@ -531,18 +667,20 @@ export default function MazeGraph({
       const row = Math.min(layout.rows - 1, Math.floor(gap.at / layout.rowW))
       const off = gap.at - row * layout.rowW
       const x = row % 2 === 0 ? off : layout.rowW - off
-      const y = row * layout.rowH + layout.rowH / 2
+      const rh = layout.rowH(row)
+      const top = layout.rowTop(row)
+      const y = layout.rowMid(row)
 
       gapsG.append('line')
-        .attr('x1', x).attr('y1', y - layout.rowH / 2 + 18)
-        .attr('x2', x).attr('y2', y + layout.rowH / 2 - 18)
+        .attr('x1', x).attr('y1', top + 18)
+        .attr('x2', x).attr('y2', top + rh - 18)
         .attr('stroke', '#6B5537')
         .attr('stroke-width', 1)
         .attr('stroke-dasharray', '3,4')
         .attr('opacity', 0.5)
       gapsG.append('text')
         .attr('class', 'lane-label')
-        .attr('x', x).attr('y', y - layout.rowH / 2 + 14)
+        .attr('x', x).attr('y', top + 14)
         .attr('text-anchor', 'middle')
         .attr('fill', '#8B7355')
         .attr('font-size', 9)
@@ -610,17 +748,19 @@ export default function MazeGraph({
       .attr('pointer-events', 'none')
       .text(d => String(d.count))
 
-    // 沼マーカー
-    if (struggleIds && struggleIds.size > 0) {
-      nodeElems.filter(d => struggleIds.has(d.id))
+    // 沼マーカー。深刻度を「輪の太さ・濃さ・破線の粗さ」に載せる。
+    // 一様な輪だと 66件に同じ印が付くだけで、どこが深いのか読めない。
+    if (effectiveStruggle && effectiveStruggle.size > 0) {
+      nodeElems.filter(d => effectiveStruggle.has(d.id))
         .append('circle')
         .attr('class', 'struggle-ring')
         .attr('r', d => nodeRadius(d) + 4)
         .attr('fill', 'none')
-        .attr('stroke', '#C0624B')
-        .attr('stroke-width', 1.2)
-        .attr('stroke-dasharray', '2,2.5')
-        .attr('opacity', 0.6)
+        .attr('stroke', d => severityStroke(effectiveStruggle.get(d.id) ?? 50))
+        .attr('stroke-width', d => 1 + (effectiveStruggle.get(d.id) ?? 50) / 40)
+        .attr('stroke-dasharray', d =>
+          (effectiveStruggle.get(d.id) ?? 50) >= 75 ? '5,2' : '2,2.5')
+        .attr('opacity', d => 0.35 + (effectiveStruggle.get(d.id) ?? 50) / 200)
         .attr('pointer-events', 'none')
     }
 
@@ -776,7 +916,8 @@ export default function MazeGraph({
       .attr('cx', d => layout.pos(d.timestamp, laneOf(d.lane)).x)
       .attr('cy', d => layout.pos(d.timestamp, laneOf(d.lane)).y)
       .attr('r', Math.max(2.5, 3 / mmScale))
-      .attr('fill', d => struggleIds?.has(d.id) ? '#C0624B' : TYPE_COLOR[d.type])
+      .attr('fill', d => effectiveStruggle?.has(d.id)
+        ? severityStroke(effectiveStruggle.get(d.id)!) : TYPE_COLOR[d.type])
       .attr('opacity', 0.75)
 
     const mmView = mm.append('rect')
@@ -796,8 +937,14 @@ export default function MazeGraph({
       )
     })
 
+    // 全体が収まっているあいだ、ミニマップは何も足さない上に最終行の点に重なる。
+    // 拡大して画面から溢れたときだけ出す。
+    const fitK = Math.max(0.12, Math.min(1.2, fitScale(layout.width, layout.height, W, H)))
+
     onZoom = (t: d3.ZoomTransform) => {
       setZoomPct(Math.round(t.k * 100))
+      mm.attr('opacity', t.k > fitK * 1.12 ? 1 : 0)
+        .attr('pointer-events', t.k > fitK * 1.12 ? 'auto' : 'none')
       // 画面がレイアウトより広いときは矩形が枠を食い破るので、枠内に収める
       const x0 = MM_PAD + t.invertX(0) * mmScale
       const y0 = MM_PAD + t.invertY(0) * mmScale
@@ -819,14 +966,38 @@ export default function MazeGraph({
     sim.tick(nodes.length > 400 ? 160 : 110)
     applyPositions()
     sim.stop()
-    fitLayout(svg, zoom, layout, W, H)
+
+    // 「地図」が同じなら、拡大位置はユーザーのもの。勝手に全体表示へ戻さない。
+    // 沼やファイルを選ぶと nodes は作り直されるが、地図の形は変わっていない。
+    // 形が変わるのは 表示単位・表示件数・絞り込み・画面サイズ・リポジトリ が変わったときだけ。
+    const gen = [
+      unit, displayLimit, [...filterTypes].sort().join(','), W, H,
+      graph.nodes.length, graph.nodes[0]?.id ?? '',
+    ].join('|')
+    const sameMap = gen === genRef.current
+    genRef.current = gen
+
+    const restore = pendingCamera.current
+    pendingCamera.current = null
+    const kept = d3.zoomTransform(svg.node()!)   // __zoom はノードに残るので前回の位置が取れる
+
+    if (restore) {
+      // 戻る操作で「さっき見ていた場所」が指定されている
+      svg.transition().duration(320).call(
+        zoom.transform, d3.zoomIdentity.translate(restore.x, restore.y).scale(restore.k))
+    } else if (sameMap && kept.k !== 1) {
+      g.attr('transform', kept.toString())
+      onZoom(kept)
+    } else {
+      fitLayout(svg, zoom, layout, W, H)
+    }
 
     if (selectedNodeId || effectiveHighlight) {
       applyHighlight(nodeElems, selectedNodeId, effectiveHighlight)
     }
 
     return () => { sim.stop() }
-  }, [nodes, links, handleNodeClick, struggleIds, unit])
+  }, [nodes, links, handleNodeClick, effectiveStruggle, unit, size.w, size.h])
 
   useEffect(() => {
     if (!svgRef.current) return
@@ -848,7 +1019,9 @@ export default function MazeGraph({
     const margin = 80
     if (sx > margin && sx < W - margin && sy > margin && sy < H - margin) return
 
-    const k = Math.max(t.k, 0.6)
+    // 倍率は動かさない。運ぶのは位置だけ。
+    // 元は Math.max(t.k, 0.6) で勝手に拡大していて、「見ていた縮尺」が失われていた
+    const k = t.k
     svg.transition().duration(420).call(
       zoomRef.current.transform,
       d3.zoomIdentity.translate(W / 2 - k * node.x, H / 2 - k * node.y).scale(k),
@@ -856,7 +1029,8 @@ export default function MazeGraph({
   }, [selectedNodeId])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#1A1107' }}>
+    <div ref={wrapRef}
+      style={{ position: 'relative', width: '100%', height: '100%', background: '#1A1107' }}>
       <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block', background: '#1A1107' }} />
 
       {/* 凡例 */}
@@ -919,16 +1093,19 @@ export default function MazeGraph({
         background: 'rgba(26,17,7,0.88)', backdropFilter: 'blur(8px)',
         border: '1px solid var(--border)', borderRadius: 8,
         padding: '5px 10px', fontSize: 11, color: 'var(--text-secondary)',
+        // 詳細パネルを開くとキャンバスが狭まり、ボタンの文字が2行に折り返していた
+        maxWidth: 'calc(100% - 28px)', whiteSpace: 'nowrap',
       }}>
         {/* まとまり / コミット の切り替え。900件を1件ずつ描いても全体は読めない */}
         {(['session', 'commit'] as const).map(u => (
-          <button key={u} onClick={() => { setUnitOverride(u); onClearFocus?.() }} style={{
+          <button key={u} onClick={() => { onUnitChange?.(u); onClearFocus?.() }} style={{
             background: unit === u ? 'var(--accent)' : 'transparent',
             border: `1px solid ${unit === u ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: 4, padding: '2px 8px',
             color: unit === u ? '#1A1107' : 'var(--text-secondary)',
             cursor: 'pointer', fontSize: 11,
             fontWeight: unit === u ? 600 : 400,
+            flexShrink: 0, whiteSpace: 'nowrap',
           }}>
             {u === 'session' ? `まとまり ${sessionCount}` : 'コミット'}
           </button>
@@ -954,7 +1131,10 @@ export default function MazeGraph({
             <span style={{ color: 'var(--text-dim)', marginLeft: 2 }}>/ {totalCount}</span>
           </>
         ) : (
-          <span style={{ color: 'var(--text-dim)' }}>
+          <span style={{
+            color: 'var(--text-dim)', overflow: 'hidden',
+            textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+          }}>
             {totalCount} コミットを {sessionCount} のまとまりに · クリックで中へ
           </span>
         )}
@@ -963,7 +1143,9 @@ export default function MazeGraph({
       <Tooltip />
     </div>
   )
-}
+})
+
+export default MazeGraph
 
 function ZoomBtn({ onClick, title, children }: {
   onClick: () => void; title: string; children: React.ReactNode
@@ -990,8 +1172,7 @@ function fitLayout(
   zoom: d3.ZoomBehavior<SVGSVGElement, unknown>,
   layout: Layout, W: number, H: number,
 ) {
-  const scale = Math.max(0.12, Math.min(1.2,
-    Math.min((W - 120) / (layout.width + 120), (H - 60) / (layout.height + 40))))
+  const scale = Math.max(0.12, Math.min(1.2, fitScale(layout.width, layout.height, W, H)))
   const tx = W / 2 - scale * (layout.width / 2)
   const ty = H / 2 - scale * (layout.height / 2)
   svg.transition().duration(600).call(

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { AnalysisResult } from '../shared/types'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import MazeGraph from './components/MazeGraph'
+import type { MazeGraphHandle } from './components/MazeGraph'
 import MazeModeView from './components/MazeModeView'
 import NodeDetail from './components/NodeDetail'
 import type { MazeNode, StruggleEpisode } from '../shared/types'
@@ -27,6 +28,19 @@ type Focus =
   | { kind: 'session'; hashes: string[] }
   | null
 
+type Unit = 'commit' | 'session' | null
+
+// 戻るで巻き戻すのは「画面に取り消す手段が無いもの」だけ。
+// フィルターや表示件数は現在値がボタンに出ていて1クリックで戻せるので積まない。
+interface NavState {
+  unit: Unit
+  focus: Focus
+  selectedHash: string | null
+  camera: { x: number; y: number; k: number } | null
+}
+
+const HISTORY_MAX = 50
+
 export default function App() {
   const [state, setState] = useState<AppState>({ phase: 'idle' })
   const [selectedNode, setSelectedNode] = useState<MazeNode | null>(null)
@@ -40,6 +54,36 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [remoteBehind, setRemoteBehind] = useState(false)
+  // 表示単位は MazeGraph ではなく App が持つ（戻るで巻き戻す対象なので）
+  const [unit, setUnit] = useState<Unit>(null)
+  const [past, setPast] = useState<NavState[]>([])
+  const [ahead, setAhead] = useState<NavState | null>(null)   // 「さっきの場所へ」1段だけ
+  const graphRef = useRef<MazeGraphHandle>(null)
+
+  const snapshot = useCallback((): NavState => ({
+    unit, focus, selectedHash: selectedNode?.id ?? null,
+    camera: graphRef.current?.getCamera() ?? null,
+  }), [unit, focus, selectedNode])
+
+  // 場所が変わる操作の直前に、いまの場所を積む
+  const pushHistory = useCallback(() => {
+    setPast(p => [...p.slice(-(HISTORY_MAX - 1)), snapshot()])
+    setAhead(null)
+  }, [snapshot])
+
+  const applyNav = useCallback((s: NavState) => {
+    graphRef.current?.queueCamera(s.camera)
+    setUnit(s.unit)
+    setFocus(s.focus)
+    setSelectedNode(null)
+    if (s.selectedHash) {
+      // ノードの実体は解析結果から引き直す（ID を保存すると集約で意味が変わる）
+      setPendingSelect(s.selectedHash)
+    }
+  }, [])
+
+  // 復元したい選択を、解析結果が揃ってから当てる
+  const [pendingSelect, setPendingSelect] = useState<string | null>(null)
 
   const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -60,6 +104,8 @@ export default function App() {
     setSelectedNode(null)
     setGithubInfo(null)
     setFocus(null)
+    // リポジトリが変われば全部のハッシュが別物になる。履歴は捨てる
+    setPast([]); setAhead(null); setUnit(null)
 
     const result = await window.electronAPI.analyzeRepo(resolved, forceRefresh)
     handleAnalysisResult(resolved, result)
@@ -70,6 +116,8 @@ export default function App() {
     setSelectedNode(null)
     setGithubInfo(null)
     setFocus(null)
+    // リポジトリが変われば全部のハッシュが別物になる。履歴は捨てる
+    setPast([]); setAhead(null); setUnit(null)
 
     const result = await window.electronAPI.openGithubRepo(input)
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
@@ -96,6 +144,7 @@ export default function App() {
     setState({ phase: 'loading', progress: 'リモートから取り込み中...' })
     setSelectedNode(null)
     setFocus(null)
+    setPast([]); setAhead(null)
 
     const res = await window.electronAPI.refreshRepo(currentRepoPath)
     if (!res.ok) {
@@ -171,6 +220,17 @@ export default function App() {
     [result],
   )
 
+  // コミットごとの深刻度（複数の沼に属するなら最大）。迷路の印の強さに使う
+  const struggleSeverity = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of result?.struggles ?? []) {
+      for (const c of e.commits) {
+        m.set(c.hash, Math.max(m.get(c.hash) ?? 0, e.severity))
+      }
+    }
+    return m
+  }, [result])
+
   const exportReport = useCallback(async () => {
     if (!currentRepoPath) return
     setToast('レポートを生成中...')
@@ -179,17 +239,6 @@ export default function App() {
     else setToast(res.error === 'canceled' ? null : `保存に失敗しました: ${res.error}`)
   }, [currentRepoPath])
 
-  // ⌘F / Ctrl+F で検索
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault()
-        setSearchOpen(v => !v)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   useEffect(() => {
     if (!toast || toast.endsWith('中...')) return
@@ -205,10 +254,12 @@ export default function App() {
 
   const selectStruggle = useCallback((episode: StruggleEpisode | null) => {
     if (!episode) { setFocus(null); return }
+    if (focus?.kind === 'struggle' && focus.episode.id === episode.id) return
+    pushHistory()
     setFocus({ kind: 'struggle', episode, hashes: episode.commits.map(c => c.hash) })
     const first = result?.graph.nodes.find(n => n.id === episode.commits[0]?.hash)
     if (first) setSelectedNode(first)
-  }, [result])
+  }, [result, focus, pushHistory])
 
   // ファイルから辿る: そのファイルを触ったコミットだけを残し、最新を選ぶ
   const selectFile = useCallback((path: string | null) => {
@@ -218,10 +269,62 @@ export default function App() {
       setToast(`${path} を触ったコミットは表示範囲にありません`)
       return
     }
+    if (focus?.kind === 'file' && focus.path === path) return
+    pushHistory()
     setFocus({ kind: 'file', path, hashes: touching.map(n => n.id) })
     const latest = [...touching].sort((a, b) => b.timestamp - a.timestamp)[0]
     setSelectedNode(latest)
-  }, [result])
+  }, [result, focus, pushHistory])
+
+  // ── 戻る / さっきの場所へ ────────────────────────────────
+  // 更新関数の中で副作用を呼ばないこと（StrictMode で2回走って履歴が壊れる）
+  const goBack = useCallback(() => {
+    if (past.length === 0) return
+    const prev = past[past.length - 1]
+    setAhead(snapshot())
+    setPast(p => p.slice(0, -1))
+    applyNav(prev)
+  }, [past, snapshot, applyNav])
+
+  const goForward = useCallback(() => {
+    if (!ahead) return
+    const target = ahead
+    setPast(p => [...p, snapshot()])
+    setAhead(null)
+    applyNav(target)
+  }, [ahead, snapshot, applyNav])
+
+  useEffect(() => {
+    if (!pendingSelect || !result) return
+    const n = result.graph.nodes.find(x => x.id === pendingSelect)
+    if (n) setSelectedNode(n)
+    setPendingSelect(null)
+  }, [pendingSelect, result])
+
+  // ⌘F で検索 / ⌘[ ⌘← で戻る / ⌘] ⌘→ でさっきの場所へ。
+  // Esc は検索パネルと GitHub 入力の「閉じる」に使われているので、履歴には割り当てない。
+  // goBack より後ろに置くこと（前に置くと dep 配列の評価で TDZ に落ちて画面が真っ白になる）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (!(e.metaKey || e.ctrlKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'f') { e.preventDefault(); setSearchOpen(v => !v) }
+      else if (k === '[' || k === 'arrowleft') { e.preventDefault(); goBack() }
+      else if (k === ']' || k === 'arrowright') { e.preventDefault(); goForward() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [goBack, goForward])
+
+  // いま何を見ているかの1行（戻るバーに出す）
+  const focusLabel = useMemo(() => {
+    if (!focus) return null
+    if (focus.kind === 'struggle') return `↩︎ ${focus.episode.title} · ${focus.hashes.length}件`
+    if (focus.kind === 'file') return `📄 ${focus.path} · ${focus.hashes.length}件`
+    return `⊞ まとまりの中 · ${focus.hashes.length}件`
+  }, [focus])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-base)' }}>
@@ -298,6 +401,68 @@ export default function App() {
           )}
           {state.phase === 'ready' && (
             <>
+              {/* 戻る + いまどこ。戻れるものも進めるものも注目も無いときは出さない。
+                  ahead を条件に入れないと、戻った直後にバーごと消えて進めなくなる */}
+              {(past.length > 0 || focusLabel || ahead) && (
+                <div style={{
+                  position: 'absolute', top: 12, left: 12, zIndex: 12,
+                  display: 'flex', alignItems: 'center', gap: 6, height: 26,
+                  background: 'rgba(26,17,7,0.86)', backdropFilter: 'blur(8px)',
+                  border: '1px solid #5E4322', borderRadius: 8, padding: '0 6px',
+                  // 上中央のビュー切替（幅150px前後）に食い込まないところで止める
+                  maxWidth: 'calc(50% - 100px)',
+                }}>
+                  <button
+                    onClick={goBack}
+                    disabled={past.length === 0}
+                    title={past.length ? `戻る（⌘[）· 残り ${past.length}` : '戻れる場所がありません'}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 24, height: 20, borderRadius: 5,
+                      border: '1px solid #85632F', background: 'transparent',
+                      color: past.length ? 'var(--text-secondary)' : 'var(--text-disabled)',
+                      opacity: past.length ? 1 : 0.35,
+                      fontSize: 12, lineHeight: 1, flexShrink: 0,
+                    }}
+                  >←</button>
+
+                  {focusLabel ? (
+                    <>
+                      <span style={{
+                        fontSize: 11, color: 'var(--accent)',
+                        background: 'rgba(212,168,74,0.12)', borderRadius: 5,
+                        padding: '2px 8px', overflow: 'hidden',
+                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {focusLabel}
+                      </span>
+                      <button
+                        onClick={() => { pushHistory(); setFocus(null) }}
+                        title="注目を解除して全体へ"
+                        style={{
+                          background: 'transparent', border: 'none', padding: '0 3px',
+                          color: 'var(--text-dim)', fontSize: 11, flexShrink: 0,
+                        }}
+                      >✕</button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)', padding: '0 4px' }}>全体</span>
+                  )}
+
+                  {ahead && (
+                    <button
+                      onClick={goForward}
+                      title="さっきの場所へ（⌘]）"
+                      style={{
+                        background: 'transparent', border: '1px solid #85632F', borderRadius: 5,
+                        padding: '1px 8px', color: 'var(--text-secondary)',
+                        fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0,
+                      }}
+                    >さっきの場所へ →</button>
+                  )}
+                </div>
+              )}
+
               {/* ビュー切り替えボタン */}
               <div style={{
                 position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
@@ -326,14 +491,20 @@ export default function App() {
 
               {viewMode === 'graph' ? (
                 <MazeGraph
+                  ref={graphRef}
                   graph={result!.graph}
                   filterTypes={filterTypes}
                   onNodeClick={setSelectedNode}
                   selectedNodeId={selectedNode?.id}
                   highlightIds={highlightIds}
                   struggleIds={struggleNodeIds}
+                  struggleSeverity={struggleSeverity}
+                  unitOverride={unit}
+                  onUnitChange={u => { pushHistory(); setUnit(u) }}
                   onClearFocus={() => setFocus(null)}
                   onDrillDown={hashes => {
+                    pushHistory()
+                    setUnit('commit')
                     setFocus({ kind: 'session', hashes })
                     const first = result!.graph.nodes.find(n => n.id === hashes[0])
                     if (first) setSelectedNode(first)
@@ -351,6 +522,21 @@ export default function App() {
               )}
             </>
           )}
+
+          {/* トーストは下部の操作バー（高さ27px・bottom:14）の上に置く。
+              fixed のままだとサイドバーぶん中心が126pxずれたうえ 21px 重なっていた */}
+          {toast && (
+            <div style={{
+              position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '9px 16px', zIndex: 500,
+              fontSize: 12, color: 'var(--text-primary)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.55)', maxWidth: '80%',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {toast}
+            </div>
+          )}
         </div>
 
         {searchOpen && result && (
@@ -360,19 +546,6 @@ export default function App() {
             onSelectFile={selectFile}
             onClose={() => setSearchOpen(false)}
           />
-        )}
-
-        {toast && (
-          <div style={{
-            position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '9px 16px', zIndex: 500,
-            fontSize: 12, color: 'var(--text-primary)',
-            boxShadow: '0 8px 28px rgba(0,0,0,0.55)', maxWidth: '70vw',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {toast}
-          </div>
         )}
 
         {selectedNode && (

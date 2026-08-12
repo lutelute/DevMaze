@@ -20,12 +20,21 @@ interface Props {
 }
 
 /* ── constants ─────────────────────────────────── */
-const COLS    = 8    // commits per snake row
 const CW      = 76   // cell width  (px)
 const CH      = 76   // cell height (px)
 const R       = 11   // node radius
 const PAD     = 52   // canvas padding
 const MAX_N   = 200  // max nodes shown in maze mode
+
+// 列数を 8 に固定していたので、ウィンドウをいくら広げても縦に細長い帯にしかならず、
+// 横幅の 17% しか使っていなかった（実測 1400×900 で 40% 表示）。
+// 画面の縦横比から、格子が画面と同じ形になる列数を選ぶ。
+function colsFor(n: number, viewW: number, viewH: number): number {
+  if (n <= 1) return 1
+  const aspect = Math.max(0.2, (viewW || 900) / (viewH || 600))
+  const cols = Math.round(Math.sqrt(n * aspect * (CH / CW)))
+  return Math.max(3, Math.min(n, cols))
+}
 
 const TYPE_COLOR: Record<CommitType, string> = {
   normal:    '#D4A84A',
@@ -45,7 +54,6 @@ const TYPE_COLOR: Record<CommitType, string> = {
 export default function MazeModeView({
   graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds,
 }: Props) {
-  const dimming = !!highlightIds && highlightIds.size > 0
   const containerRef = useRef<HTMLDivElement>(null)
   const [pan,   setPan]   = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
@@ -63,6 +71,33 @@ export default function MazeModeView({
 
   const nodeIds = useMemo(() => new Set(nodes.map(n => n.id)), [nodes])
 
+  // 該当が1件も無いのに暗くすると、画面全部が沈んで「壊れた」ようにしか見えない。
+  // ここは最新 MAX_N 件しか描かないので、それより古い沼を選ぶと全件が該当外になる。
+  const dimming = !!highlightIds && highlightIds.size > 0 &&
+    nodes.some(n => highlightIds.has(n.id))
+
+  // 画面の大きさに追従して列数を選び直す
+  const [view, setView] = useState({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const apply = () => {
+      const r = el.getBoundingClientRect()
+      setView(prev =>
+        Math.abs(prev.w - r.width) > 24 || Math.abs(prev.h - r.height) > 24
+          ? { w: r.width, h: r.height } : prev)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const COLS = useMemo(
+    () => colsFor(nodes.length, view.w, view.h),
+    [nodes.length, view.w, view.h],
+  )
+
   /* ── 2. snake layout ─────────────────────────── */
   const positions = useMemo(() => {
     const pos = new Map<string, { x: number; y: number }>()
@@ -76,7 +111,7 @@ export default function MazeModeView({
       })
     })
     return pos
-  }, [nodes])
+  }, [nodes, COLS])
 
   /* ── 3. canvas size ─────────────────────────── */
   const { canvasW, canvasH } = useMemo(() => {
@@ -85,7 +120,7 @@ export default function MazeModeView({
       canvasW: PAD * 2 + COLS * CW,
       canvasH: PAD * 2 + rows * CH,
     }
-  }, [nodes.length])
+  }, [nodes.length, COLS])
 
   /* ── 4. auto-fit ─────────────────────────────── */
   const fit = useCallback(() => {

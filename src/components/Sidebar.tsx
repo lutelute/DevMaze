@@ -49,6 +49,13 @@ const STRUGGLE_META: Record<StruggleKind, { label: string; icon: string }> = {
 const MIN_W = 200
 const MAX_W = 460
 const DEFAULT_W = 252
+// 畳んだときの幅。キャンバスが 252px ぶん広がるので、全体表示の縮尺が大きく上がる
+const RAIL_W = 40
+
+// 畳んだレールに出す1文字。タブのラベルの頭を使う
+const TAB_GLYPH: Record<Tab, string> = {
+  overview: '概', struggles: '沼', hotspots: '場', repos: '歴',
+}
 
 function severityColor(severity: number): string {
   if (severity >= 75) return '#C0624B'
@@ -79,6 +86,7 @@ export default function Sidebar({
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [width, setWidth] = useState(DEFAULT_W)
+  const [collapsed, setCollapsed] = useState(false)
   const dragRef = useRef<{ startX: number; startW: number } | null>(null)
 
   const toggleFilter = (type: string) => {
@@ -116,6 +124,53 @@ export default function Sidebar({
     { id: 'repos',     label: '履歴', count: recentRepos.length },
   ]
 
+  // 畳んだ状態: 40px のレール。1文字＋件数だけ出し、押すとその内容で開く
+  if (collapsed) {
+    return (
+      <aside style={{
+        width: RAIL_W, flexShrink: 0,
+        background: 'var(--bg-panel)',
+        borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        padding: '8px 0', gap: 4, overflow: 'hidden',
+      }}>
+        <button
+          onClick={() => setCollapsed(false)}
+          title="サイドバーを開く"
+          style={{
+            width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)',
+            background: 'transparent', color: 'var(--text-secondary)', fontSize: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}
+        >»</button>
+        <div style={{ width: 20, height: 1, background: 'var(--border)', margin: '4px 0' }} />
+        {TABS.map(t => {
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              onClick={() => { setTab(t.id); setCollapsed(false) }}
+              title={`${t.label}${t.count ? `（${t.count}）` : ''}`}
+              style={{
+                width: 28, padding: '5px 0', borderRadius: 6,
+                border: `1px solid ${active ? 'var(--accent)' : 'transparent'}`,
+                background: active ? 'rgba(212,168,74,0.12)' : 'transparent',
+                color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: 12, lineHeight: 1.2 }}>{TAB_GLYPH[t.id]}</span>
+              {t.count !== undefined && t.count > 0 && (
+                <span style={{ fontSize: 8.5, fontFamily: 'monospace', opacity: 0.75 }}>{t.count}</span>
+              )}
+            </button>
+          )
+        })}
+      </aside>
+    )
+  }
+
   return (
     <aside style={{
       width, flexShrink: 0, position: 'relative',
@@ -125,9 +180,18 @@ export default function Sidebar({
     }}>
       {/* タブ */}
       <div style={{
-        display: 'flex', gap: 2, padding: '8px 8px 0',
-        borderBottom: '1px solid var(--border)',
+        display: 'flex', gap: 2, padding: '8px 6px 0',
+        borderBottom: '1px solid var(--border)', alignItems: 'flex-start',
       }}>
+        <button
+          onClick={() => setCollapsed(true)}
+          title="サイドバーを畳む（迷路が大きく映る）"
+          style={{
+            width: 20, height: 22, borderRadius: 5, border: 'none', background: 'transparent',
+            color: 'var(--text-dim)', fontSize: 12, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >«</button>
         {TABS.map(t => {
           const active = tab === t.id
           return (
