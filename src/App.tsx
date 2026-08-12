@@ -6,7 +6,7 @@ import MazeGraph from './components/MazeGraph'
 import type { MazeGraphHandle } from './components/MazeGraph'
 import CalendarView from './components/CalendarView'
 import NodeDetail from './components/NodeDetail'
-import type { MazeNode, StruggleEpisode } from '../shared/types'
+import type { MazeNode, StruggleEpisode, Zone } from '../shared/types'
 import WelcomeScreen from './components/WelcomeScreen'
 import SearchPanel from './components/SearchPanel'
 
@@ -26,6 +26,7 @@ type Focus =
   | { kind: 'struggle'; episode: StruggleEpisode; hashes: string[] }
   | { kind: 'file'; path: string; hashes: string[] }
   | { kind: 'session'; hashes: string[] }
+  | { kind: 'zone'; zone: Zone; hashes: string[] }
   | null
 
 type Unit = 'commit' | 'session' | null
@@ -276,6 +277,21 @@ export default function App() {
     setSelectedNode(latest)
   }, [result, focus, pushHistory])
 
+  // 開発フェーズは「期間」。押した結果もその期間の強調にする。
+  // 元は toggleFilter(zone.theme) で、行に期間と件数を出しているのに
+  // 押すと全期間の同種別だけが残っていた。同じ theme のフェーズが2区間あると
+  // 両方が同時に点灯するので、選択の見え方も嘘になっていた
+  const selectZone = useCallback((zone: Zone | null) => {
+    if (!zone || !result) { setFocus(null); return }
+    if (focus?.kind === 'zone' && focus.zone.id === zone.id) { setFocus(null); return }
+    const hashes = result.graph.nodes
+      .filter(n => n.timestamp >= zone.startTimestamp && n.timestamp <= zone.endTimestamp)
+      .map(n => n.id)
+    if (hashes.length === 0) return
+    pushHistory()
+    setFocus({ kind: 'zone', zone, hashes })
+  }, [result, focus, pushHistory])
+
   // ── 戻る / さっきの場所へ ────────────────────────────────
   // 更新関数の中で副作用を呼ばないこと（StrictMode で2回走って履歴が壊れる）
   const goBack = useCallback(() => {
@@ -323,6 +339,7 @@ export default function App() {
     if (!focus) return null
     if (focus.kind === 'struggle') return `↩︎ ${focus.episode.title} · ${focus.hashes.length}件`
     if (focus.kind === 'file') return `📄 ${focus.path} · ${focus.hashes.length}件`
+    if (focus.kind === 'zone') return `⛰ ${focus.zone.label} · ${focus.hashes.length}件`
     return `⊞ まとまりの中 · ${focus.hashes.length}件`
   }, [focus])
 
@@ -389,6 +406,8 @@ export default function App() {
           onSelectStruggle={selectStruggle}
           selectedFilePath={focus?.kind === 'file' ? focus.path : undefined}
           onSelectFile={selectFile}
+          selectedZoneId={focus?.kind === 'zone' ? focus.zone.id : undefined}
+          onSelectZone={selectZone}
         />
 
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-base)' }}>

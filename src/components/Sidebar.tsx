@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type {
-  AnalysisResult, CommitType, StruggleEpisode, StruggleKind, FileHotspot,
+  AnalysisResult, CommitType, StruggleEpisode, StruggleKind, FileHotspot, Zone,
 } from '../../shared/types'
 import ScoreCard from './ScoreCard'
 import { COMMIT_TYPE, severityColor } from '../../shared/theme'
@@ -16,6 +16,8 @@ interface Props {
   onSelectStruggle: (episode: StruggleEpisode | null) => void
   selectedFilePath?: string
   onSelectFile: (path: string | null) => void
+  selectedZoneId?: string
+  onSelectZone: (zone: Zone | null) => void
 }
 
 type Tab = 'overview' | 'struggles' | 'hotspots' | 'repos'
@@ -98,6 +100,7 @@ export default function Sidebar({
   recentRepos, currentRepoPath, onOpenRecent,
   selectedStruggleId, onSelectStruggle,
   selectedFilePath, onSelectFile,
+  selectedZoneId, onSelectZone,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [width, setWidth] = useState(DEFAULT_W)
@@ -273,11 +276,13 @@ export default function Sidebar({
                 {zones.map(zone => {
                   const meta = TYPE_META[zone.theme]
                   const icon = ZONE_ICON[zone.theme] ?? '📌'
-                  const active = filterTypes.has(zone.theme)
+                  // 元は filterTypes.has(zone.theme) だったので、同じ種別の
+                  // フェーズが2区間あると両方が同時に点灯していた
+                  const active = zone.id === selectedZoneId
                   return (
                     <button
                       key={zone.id}
-                      onClick={() => toggleFilter(zone.theme)}
+                      onClick={() => onSelectZone(active ? null : zone)}
                       title={`${zone.label}（${zone.nodeCount}コミット / ${formatDate(zone.startTimestamp)}〜${formatDate(zone.endTimestamp)}）`}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',

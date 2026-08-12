@@ -432,10 +432,14 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
     // 強調対象は表示件数の外にあっても必ず出す。
     // これが無いと、古いまとまり・沼・ファイルを開いたとき全部が沈んで
     // 何も見えない画面になる（実測: 150件表示で 150件すべてが沈んだ）。
+    // ただし無制限に足すと、開発フェーズのように数百件を注目したとき
+    // 表示件数を大きく超えて重くなる。追い出しは +300 件までにする
     if (highlightIds && highlightIds.size > 0) {
       const shown = new Set(limited.map(n => n.id))
+      let added = 0
       for (const n of sorted) {
-        if (highlightIds.has(n.id) && !shown.has(n.id)) limited.push(n)
+        if (added >= 300) break
+        if (highlightIds.has(n.id) && !shown.has(n.id)) { limited.push(n); added++ }
       }
     }
 
