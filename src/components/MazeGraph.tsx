@@ -21,6 +21,8 @@ interface Props {
   struggleSeverity?: Map<string, number>
   /** 沼エピソード。廊下に「ぬかるみ」の帯として敷く */
   struggles?: StruggleEpisode[]
+  /** いま選ばれている沼。これだけ帯を強く出す（30本を常時強調すると赤い壁になる） */
+  activeStruggleId?: string
   /** まとまりを開いたとき（そのまとまりに属するコミットを強調させる） */
   onDrillDown?: (hashes: string[]) => void
   /** 表示単位を手で切り替えたときに、注目を解除する */
@@ -334,7 +336,7 @@ const ZONE_LABEL_COLOR = (theme: CommitType) => TYPE_COLOR[theme] ?? '#D4A84A'
 // ── Component ──────────────────────────────────────────────
 const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
   graph, filterTypes, onNodeClick, selectedNodeId, highlightIds, struggleIds, struggleSeverity,
-  struggles,
+  struggles, activeStruggleId,
   onDrillDown, onClearFocus, unitOverride = null, onUnitChange,
 }: Props, ref) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -681,28 +683,32 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
           const xb = r % 2 === 0 ? segB : layout.rowW - segA
           const y = layout.rowMid(r) - bandH / 2
 
-          // 箱で囲むと、30件が重なって赤い壁になり道が見えなくなる（実測）。
-          // ノードの下に敷く「ぬかるんだ地面」にする。縁取りはせず、
-          // 下端の線の太さだけに深刻度を載せる
+          // 30件を常時強調すると、道全体が赤い壁になって「どこが沼か」を指せなくなる
+          // （実測）。既定はごく薄い地面にとどめ、選ばれた1件だけ強く出す。
+          const active = e.id === activeStruggleId
+
           bands.append('rect')
             .attr('x', xa).attr('y', y)
             .attr('width', Math.max(6, xb - xa)).attr('height', bandH)
             .attr('rx', 6)
-            .attr('fill', color).attr('opacity', 0.05)
+            .attr('fill', color).attr('opacity', active ? 0.16 : 0.045)
             .attr('pointer-events', 'none')
 
-          bands.append('line')
-            .attr('x1', xa).attr('y1', y + bandH)
-            .attr('x2', Math.max(xa + 6, xb)).attr('y2', y + bandH)
-            .attr('stroke', color)
-            .attr('stroke-width', 1 + e.severity / 70)
-            .attr('stroke-linecap', 'round')
-            .attr('opacity', 0.45)
-            .attr('pointer-events', 'none')
+          if (active) {
+            // 下端の線の太さが深刻度
+            bands.append('line')
+              .attr('x1', xa).attr('y1', y + bandH)
+              .attr('x2', Math.max(xa + 6, xb)).attr('y2', y + bandH)
+              .attr('stroke', color)
+              .attr('stroke-width', 1 + e.severity / 70)
+              .attr('stroke-linecap', 'round')
+              .attr('opacity', 0.7)
+              .attr('pointer-events', 'none')
+          }
 
           // 終端の形が「抜けたかどうか」。閉じている＝門をくぐった、
           // 開いている＝まだ抜けていない。凡例なしで読める唯一の符号化
-          if (r === r1) {
+          if (r === r1 && active) {
             const endX = r % 2 === 0 ? xb : xa
             if (e.escape) {
               bands.append('line')
@@ -714,7 +720,7 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
           }
 
           // 頭に種別の記号。再発しているなら「2/3」を添える
-          if (r === r0) {
+          if (r === r0 && active) {
             const headX = r % 2 === 0 ? xa : xb
             const meta = STRUGGLE_META[e.kind]
             bands.append('text')
@@ -791,13 +797,36 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
       const c   = TYPE_COLOR[d.type]
       const r   = nodeRadius(d)
 
-      if (d.type === 'merge') {
+      // 色は4種だけに減らし、残りは形で持つ（11色は色覚多様性で26組が潰れる）
+      const shape = COMMIT_TYPE[d.type]?.shape ?? 'circle'
+
+      if (shape === 'diamond') {
         sel.append('path').attr('class', 'main-circle').attr('d', diamond(r))
           .attr('fill', `${c}33`).attr('stroke', c).attr('stroke-width', 2)
-      } else if (d.type === 'release') {
+      } else if (shape === 'hex') {
         sel.append('path').attr('class', 'main-circle').attr('d', hexagon(r))
           .attr('fill', `${c}40`).attr('stroke', c).attr('stroke-width', 2.5)
           .attr('filter', 'url(#glow)')
+      } else if (shape === 'dashed') {
+        // 閉じていない輪 = まだ途中。WIP の意味がそのまま形になる
+        sel.append('circle').attr('class', 'main-circle').attr('r', r)
+          .attr('fill', 'none').attr('stroke', c)
+          .attr('stroke-width', 1.8).attr('stroke-dasharray', '3,2.4')
+      } else if (shape === 'square') {
+        const s = r * 1.7
+        sel.append('rect').attr('class', 'main-circle')
+          .attr('x', -s / 2).attr('y', -s / 2).attr('width', s).attr('height', s).attr('rx', 3)
+          .attr('fill', `${c}2A`).attr('stroke', c).attr('stroke-width', 1.5)
+        // 4種で同じ色を共有するので、識別はこの1文字が担う
+        const glyph = COMMIT_TYPE[d.type]?.glyph
+        if (glyph && r >= 6) {
+          sel.append('text')
+            .attr('text-anchor', 'middle').attr('dy', r * 0.42)
+            .attr('font-size', Math.min(11, s * 0.68))
+            .attr('font-family', 'JetBrains Mono, monospace')
+            .attr('fill', c).attr('pointer-events', 'none')
+            .text(glyph)
+        }
       } else {
         sel.append('circle').attr('class', 'main-circle').attr('r', r)
           .attr('fill', d.isMainBranch ? `${c}55` : `${c}2A`)
@@ -1070,7 +1099,7 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
     }
 
     return () => { sim.stop() }
-  }, [nodes, links, handleNodeClick, effectiveStruggle, struggles, unit, size.w, size.h])
+  }, [nodes, links, handleNodeClick, effectiveStruggle, struggles, activeStruggleId, unit, size.w, size.h])
 
   useEffect(() => {
     if (!svgRef.current) return
@@ -1116,23 +1145,34 @@ const MazeGraph = forwardRef<MazeGraphHandle, Props>(function MazeGraph({
       }}>
         <div style={{ color: 'var(--text-dim)', fontWeight: 600, letterSpacing: '0.8px', marginBottom: 2 }}>凡例</div>
         {([
-          { label: 'Main',      color: TYPE_COLOR.normal,    shape: 'circle',  main: true },
-          { label: 'Feature',   color: TYPE_COLOR.feature,   shape: 'circle',  main: false },
-          { label: 'Bugfix',    color: TYPE_COLOR.error_fix, shape: 'circle',  main: false },
-          { label: 'Merge',     color: TYPE_COLOR.merge,     shape: 'diamond', main: false },
-          { label: 'Release',   color: TYPE_COLOR.release,   shape: 'hex',     main: false },
-          { label: '沼',        color: '#C0624B',            shape: 'ring',    main: false },
-        ]).map(({ label, color, shape, main }) => (
+          { label: '機能追加', color: TYPE_COLOR.feature,   shape: 'circle'  },
+          { label: '通常',     color: TYPE_COLOR.normal,    shape: 'circle'  },
+          { label: 'リバート', color: TYPE_COLOR.revert,    shape: 'circle'  },
+          { label: 'バグ修正', color: TYPE_COLOR.error_fix, shape: 'circle'  },
+          { label: 'マージ',   color: TYPE_COLOR.merge,     shape: 'diamond' },
+          { label: 'リリース', color: TYPE_COLOR.release,   shape: 'hex'     },
+          { label: 'WIP',      color: TYPE_COLOR.wip,       shape: 'dashed'  },
+          { label: '周辺作業', color: TYPE_COLOR.chore,     shape: 'square'  },
+          { label: '沼',       color: '#C0624B',            shape: 'band'    },
+        ] as const).map(({ label, color, shape }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="13" height="13" viewBox="-7 -7 14 14">
               {shape === 'diamond' ? (
                 <path d={diamond(5)} fill={`${color}30`} stroke={color} strokeWidth="1.5"/>
               ) : shape === 'hex' ? (
                 <path d={hexagon(5)} fill={`${color}30`} stroke={color} strokeWidth="1.5"/>
-              ) : shape === 'ring' ? (
-                <circle r={5} fill="none" stroke={color} strokeWidth="1.3" strokeDasharray="2,2"/>
+              ) : shape === 'dashed' ? (
+                <circle r={4.5} fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="2.4,1.8"/>
+              ) : shape === 'square' ? (
+                <rect x={-4.5} y={-4.5} width={9} height={9} rx={2}
+                  fill={`${color}30`} stroke={color} strokeWidth="1.4"/>
+              ) : shape === 'band' ? (
+                <>
+                  <rect x={-6} y={-3} width={12} height={6} rx={2} fill={color} opacity={0.14}/>
+                  <line x1={-6} y1={3} x2={6} y2={3} stroke={color} strokeWidth="1.6"/>
+                </>
               ) : (
-                <circle r={main ? 5 : 4} fill={`${color}33`} stroke={color} strokeWidth={main ? 2 : 1.5}/>
+                <circle r={4.5} fill={`${color}33`} stroke={color} strokeWidth="1.6"/>
               )}
             </svg>
             <span style={{ color: 'var(--text-secondary)' }}>{label}</span>

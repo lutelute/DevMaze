@@ -29,20 +29,46 @@ export interface TypeStyle {
   label: string
   /** 一覧で使う短い名前（サイドバーのように幅が狭いところ用） */
   short: string
+  shape: TypeShape
+  /** square のときだけ中に置く1文字。同じ色を4種で共有するので識別はこれが担う */
+  glyph?: string
 }
 
+/** 節点の描き分け。色だけに頼らないためのチャネル */
+export type TypeShape = 'circle' | 'diamond' | 'hex' | 'dashed' | 'square'
+
+/**
+ * 11種を色だけで持つのをやめる。
+ *
+ * 元の11色を色覚多様性（P型・D型）でシミュレートすると、相互コントラストが 1.20 を
+ * 下回る＝隣り合うと同色に見えるペアが **P型で26組・D型で30組**あった。
+ * 正常色覚でも `revert #C88B3A` と `docs #7A9BB8` は明度が完全に一致していて、
+ * ミニマップ（半径2.5px）では色相差しか手がかりが無く区別できない。
+ * 配色の善し悪しではなく **11 という数が色の容量を超えている**ことによる問題なので、
+ * 明るいテーマに替えても解決しない。
+ *
+ * 色を持つのは「試行錯誤の物語に効く4種」だけにして輝度のはしごを作る。
+ * この4色は CVD 後の相互コントラストが P型で最小1.39・D型で1.26 あり、
+ * 1.20 を下回るペアはゼロ（元は10組中4組が該当）。残りは形で持つ。
+ */
 export const COMMIT_TYPE = {
-  normal:    { hex: '#D4A84A', label: '通常コミット',     short: '通常' },
-  feature:   { hex: '#7B9E5A', label: '機能追加',         short: '機能追加' },
-  error_fix: { hex: '#C0624B', label: 'バグ修正',         short: 'バグ修正' },
-  revert:    { hex: '#C88B3A', label: 'リバート',         short: 'リバート' },
-  merge:     { hex: '#A88B5A', label: 'マージ',           short: 'マージ' },
-  wip:       { hex: '#B8A06A', label: 'WIP',              short: 'WIP' },
-  release:   { hex: '#E8C060', label: 'リリース',         short: 'リリース' },
-  chore:     { hex: '#8B9BAA', label: '環境整備',         short: '環境整備' },
-  docs:      { hex: '#7A9BB8', label: 'ドキュメント',     short: 'ドキュメント' },
-  refactor:  { hex: '#9B8EC4', label: 'リファクタリング', short: 'リファクタ' },
-  test:      { hex: '#6AAF9E', label: 'テスト',           short: 'テスト' },
+  // 4色の輝度ラダー（括弧内は背景 #1A1107 に対するコントラスト比）
+  feature:   { hex: '#A6CE6E', label: '機能追加',         short: '機能追加',   shape: 'circle' },  // 10.36
+  normal:    { hex: '#D9A63F', label: '通常コミット',     short: '通常',       shape: 'circle' },  //  8.41
+  revert:    { hex: '#BE7A28', label: 'リバート',         short: 'リバート',   shape: 'circle' },  //  5.33
+  error_fix: { hex: '#B85742', label: 'バグ修正',         short: 'バグ修正',   shape: 'circle' },  //  3.97
+
+  // 形で持つもの
+  merge:     { hex: '#A88B5A', label: 'マージ',           short: 'マージ',     shape: 'diamond' },
+  release:   { hex: '#F2D27A', label: 'リリース',         short: 'リリース',   shape: 'hex' },
+  // 破線の円＝閉じていない輪。「まだ途中」がそのまま形になる
+  wip:       { hex: '#9A8656', label: 'WIP',              short: 'WIP',        shape: 'dashed' },
+
+  // 周辺作業。試行錯誤の物語には効かないので、色相を4つ食う価値がない。1色＋1文字に畳む
+  chore:     { hex: '#7E8C99', label: '環境整備',         short: '環境整備',     shape: 'square', glyph: 'C' },
+  docs:      { hex: '#7E8C99', label: 'ドキュメント',     short: 'ドキュメント', shape: 'square', glyph: 'D' },
+  refactor:  { hex: '#7E8C99', label: 'リファクタリング', short: 'リファクタ',   shape: 'square', glyph: 'R' },
+  test:      { hex: '#7E8C99', label: 'テスト',           short: 'テスト',       shape: 'square', glyph: 'T' },
 } as const satisfies Record<CommitType, TypeStyle>
 
 /** 節点の色。未知の種別が来ても落ちないよう既定色を返す */

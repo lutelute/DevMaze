@@ -4,13 +4,13 @@ import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import MazeGraph from './components/MazeGraph'
 import type { MazeGraphHandle } from './components/MazeGraph'
-import MazeModeView from './components/MazeModeView'
+import CalendarView from './components/CalendarView'
 import NodeDetail from './components/NodeDetail'
 import type { MazeNode, StruggleEpisode } from '../shared/types'
 import WelcomeScreen from './components/WelcomeScreen'
 import SearchPanel from './components/SearchPanel'
 
-type ViewMode = 'graph' | 'maze'
+type ViewMode = 'graph' | 'calendar'
 
 type AppState =
   | { phase: 'idle' }
@@ -471,7 +471,7 @@ export default function App() {
                 borderRadius: 'var(--radius-lg)', padding: 3,
                 boxShadow: 'var(--shadow-sm)',
               }}>
-                {(['graph', 'maze'] as ViewMode[]).map(mode => (
+                {(['graph', 'calendar'] as ViewMode[]).map(mode => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
@@ -484,7 +484,7 @@ export default function App() {
                       letterSpacing: '0.2px',
                     }}
                   >
-                    {mode === 'graph' ? '⬡ Graph' : '⊞ Maze'}
+                    {mode === 'graph' ? '⬡ 迷路' : '▦ 暦'}
                   </button>
                 ))}
               </div>
@@ -500,6 +500,7 @@ export default function App() {
                   struggleIds={struggleNodeIds}
                   struggleSeverity={struggleSeverity}
                   struggles={result!.struggles}
+                  activeStruggleId={focus?.kind === 'struggle' ? focus.episode.id : undefined}
                   unitOverride={unit}
                   onUnitChange={u => { pushHistory(); setUnit(u) }}
                   onClearFocus={() => setFocus(null)}
@@ -512,12 +513,12 @@ export default function App() {
                   }}
                 />
               ) : (
-                <MazeModeView
+                <CalendarView
                   graph={result!.graph}
+                  activity={result!.activity}
                   filterTypes={filterTypes}
                   onNodeClick={setSelectedNode}
                   selectedNodeId={selectedNode?.id}
-                  highlightIds={highlightIds}
                   struggleIds={struggleNodeIds}
                 />
               )}

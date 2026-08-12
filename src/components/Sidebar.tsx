@@ -50,6 +50,35 @@ const TAB_GLYPH: Record<Tab, string> = {
 }
 
 
+/** フィルター行の印。迷路の節点と同じ形にそろえる */
+function TypeMark({ type, color }: { type: CommitType; color: string }) {
+  const shape = COMMIT_TYPE[type].shape
+  const glyph = COMMIT_TYPE[type].glyph
+  return (
+    <svg width="12" height="12" viewBox="-7 -7 14 14" style={{ flexShrink: 0 }}>
+      {shape === 'diamond' ? (
+        <path d="M0,-5 L4,0 L0,5 L-4,0 Z" fill={`${color}30`} stroke={color} strokeWidth="1.4"/>
+      ) : shape === 'hex' ? (
+        <path d="M4.3,-2.5 L4.3,2.5 L0,5 L-4.3,2.5 L-4.3,-2.5 L0,-5 Z"
+          fill={`${color}30`} stroke={color} strokeWidth="1.4"/>
+      ) : shape === 'dashed' ? (
+        <circle r={4.4} fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="2.4,1.8"/>
+      ) : shape === 'square' ? (
+        <>
+          <rect x={-4.6} y={-4.6} width={9.2} height={9.2} rx={2}
+            fill={`${color}30`} stroke={color} strokeWidth="1.3"/>
+          {glyph && (
+            <text textAnchor="middle" dy={3} fontSize={7}
+              fontFamily="JetBrains Mono, monospace" fill={color}>{glyph}</text>
+          )}
+        </>
+      ) : (
+        <circle r={4.4} fill={`${color}33`} stroke={color} strokeWidth="1.6"/>
+      )}
+    </svg>
+  )
+}
+
 function repoLabel(repoPath: string): string {
   const name = repoPath.split('/').pop() ?? repoPath
   return name.endsWith('.git') ? name.slice(0, -4) : name
@@ -289,7 +318,9 @@ export default function Sidebar({
                       borderRadius: 6, padding: '5px 8px', cursor: 'pointer', textAlign: 'left',
                     }}
                   >
-                    <span style={{ color: meta.color, fontSize: 10 }}>⬤</span>
+                    {/* 形も出す。⬤ のままだと形のチャネルが凡例にしか無く、
+                        周辺作業4種が「同じ色の点」として並んでしまう */}
+                    <TypeMark type={type} color={meta.color} />
                     <span style={{ flex: 1, color: active ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 12 }}>
                       {meta.label}
                     </span>
