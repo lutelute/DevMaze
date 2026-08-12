@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { AnalysisResult } from '../shared/types'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
@@ -15,7 +15,9 @@ type ViewMode = 'graph' | 'calendar'
 type AppState =
   | { phase: 'idle' }
   | { phase: 'loading'; progress: string }
-  | { phase: 'error'; message: string }
+  // 何をしようとして失敗したかを持つ。元は message だけで、
+  // 失敗したパスも直前の正常な結果も捨てていたので、同じ条件で再試行できなかった
+  | { phase: 'error'; message: string; retry?: () => void; target?: string }
   | { phase: 'ready'; result: AnalysisResult; fromCache: boolean }
 
 interface GithubInfo { owner: string; name: string }
@@ -86,10 +88,13 @@ export default function App() {
   // 復元したい選択を、解析結果が揃ってから当てる
   const [pendingSelect, setPendingSelect] = useState<string | null>(null)
 
-  const handleAnalysisResult = useCallback((repoPath: string, result: unknown) => {
+  const handleAnalysisResult = useCallback((
+    repoPath: string, result: unknown,
+    fail?: { target: string; retry: () => void },
+  ) => {
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
     if (!r.ok || !r.data) {
-      setState({ phase: 'error', message: r.error ?? '不明なエラー' })
+      setState({ phase: 'error', message: r.error ?? '不明なエラー', ...fail })
       return
     }
     setState({ phase: 'ready', result: r.data, fromCache: r.fromCache ?? false })
@@ -109,7 +114,7 @@ export default function App() {
     setPast([]); setAhead(null); setUnit(null)
 
     const result = await window.electronAPI.analyzeRepo(resolved, forceRefresh)
-    handleAnalysisResult(resolved, result)
+    handleAnalysisResult(resolved, result, { target: resolved, retry: () => openRepo(resolved, forceRefresh) })
   }, [handleAnalysisResult])
 
   const openGithubRepo = useCallback(async (input: string) => {
@@ -123,7 +128,10 @@ export default function App() {
     const result = await window.electronAPI.openGithubRepo(input)
     const r = result as { ok: boolean; data?: AnalysisResult; fromCache?: boolean; error?: string }
     if (!r.ok || !r.data) {
-      setState({ phase: 'error', message: r.error ?? '不明なエラー' })
+      setState({
+        phase: 'error', message: r.error ?? '不明なエラー',
+        target: input, retry: () => openGithubRepo(input),
+      })
       return
     }
     setState({ phase: 'ready', result: r.data, fromCache: r.fromCache ?? false })
@@ -149,7 +157,10 @@ export default function App() {
 
     const res = await window.electronAPI.refreshRepo(currentRepoPath)
     if (!res.ok) {
-      setState({ phase: 'error', message: res.error })
+      setState({
+        phase: 'error', message: res.error,
+        target: currentRepoPath, retry: () => refreshRepo(),
+      })
       return
     }
     setState({ phase: 'ready', result: res.data, fromCache: false })
@@ -334,6 +345,49 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [goBack, goForward])
 
+  // 修飾キー無しの操作。← → で時系列を辿り、Esc は「いちばん手前を1つ閉じる」。
+  // Esc を履歴の戻るに割り当てないのは、検索と GitHub 入力が既に使っているため
+  const [helpOpen, setHelpOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+
+      if (e.key === 'Escape') {
+        // 手前から1つずつ。全部閉じてから注目を解く
+        if (helpOpen) { setHelpOpen(false); return }
+        if (searchOpen) { setSearchOpen(false); return }
+        if (selectedNode) { setSelectedNode(null); return }
+        if (focus) { pushHistory(); setFocus(null) }
+        return
+      }
+      if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+        e.preventDefault(); setHelpOpen(v => !v); return
+      }
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+
+      const r = state.phase === 'ready' ? state.result : null
+      if (!r) return
+      e.preventDefault()
+
+      // 表示中の母集団を時系列で辿る。注目があるならその中だけを行き来する
+      const pool = (focus
+        ? r.graph.nodes.filter(n => focus.hashes.includes(n.id))
+        : r.graph.nodes
+      ).slice().sort((a, b) => a.timestamp - b.timestamp)
+      if (pool.length === 0) return
+
+      const i = selectedNode ? pool.findIndex(n => n.id === selectedNode.id) : -1
+      const next = e.key === 'ArrowRight'
+        ? pool[i < 0 ? 0 : Math.min(pool.length - 1, i + 1)]
+        : pool[i < 0 ? pool.length - 1 : Math.max(0, i - 1)]
+      if (next) setSelectedNode(next)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [state, focus, selectedNode, searchOpen, helpOpen, pushHistory])
+
   // いま何を見ているかの1行（戻るバーに出す）
   const focusLabel = useMemo(() => {
     if (!focus) return null
@@ -416,7 +470,13 @@ export default function App() {
           )}
           {state.phase === 'loading' && <LoadingScreen progress={state.progress} />}
           {state.phase === 'error' && (
-            <ErrorScreen message={state.message} onRetry={() => setState({ phase: 'idle' })} />
+            <ErrorScreen
+              message={state.message}
+              target={state.target}
+              onRetry={state.retry}
+              onPickOther={() => openRepo()}
+              onBack={() => setState({ phase: 'idle' })}
+            />
           )}
           {state.phase === 'ready' && (
             <>
@@ -569,6 +629,51 @@ export default function App() {
           />
         )}
 
+        {helpOpen && (
+          <div
+            onClick={() => setHelpOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 600,
+              background: 'rgba(10,6,2,0.55)', backdropFilter: 'blur(2px)',
+              display: 'grid', placeItems: 'center',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: 460, background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-interactive)', borderRadius: 10,
+                padding: '18px 22px', boxShadow: '0 20px 56px rgba(0,0,0,0.75)',
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>キーボード操作</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '9px 16px', fontSize: 12.5 }}>
+                {([
+                  ['← →', '時系列を1つ前後へ（注目中はその中だけ）'],
+                  ['⌘[ / ⌘←', '戻る'],
+                  ['⌘] / ⌘→', 'さっきの場所へ'],
+                  ['⌘F', 'コミットを検索'],
+                  ['Esc', '手前から1つ閉じる（検索 → 詳細 → 注目）'],
+                  ['?', 'この一覧'],
+                ] as const).map(([key, desc]) => (
+                  <React.Fragment key={key}>
+                    <kbd style={{
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                      background: 'var(--bg-base)', border: '1px solid var(--border-interactive)',
+                      borderRadius: 5, padding: '2px 8px', whiteSpace: 'nowrap',
+                      color: 'var(--text-primary)', justifySelf: 'start',
+                    }}>{key}</kbd>
+                    <span style={{ color: 'var(--text-secondary)' }}>{desc}</span>
+                  </React.Fragment>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 15 }}>
+                クリックか Esc で閉じる
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectedNode && (
           <NodeDetail
             node={selectedNode}
@@ -585,49 +690,147 @@ export default function App() {
   )
 }
 
+// 実在する工程だけを並べる。偽のパーセンテージは出さない
+const STAGES: { id: string; label: string }[] = [
+  { id: 'git',    label: 'Git履歴を取得' },
+  { id: 'graph',  label: 'コミットを分類・グラフを構築' },
+  { id: 'detect', label: '沼・場所・働き方を解析' },
+  { id: 'layout', label: '迷路を準備' },
+]
+
+/** 進捗メッセージが段階の JSON なら段階を、そうでなければ素の文字列を返す */
+function parseProgress(msg: string): { stage?: string; detail?: string; text?: string } {
+  if (!msg.startsWith('{')) return { text: msg }
+  try {
+    const o = JSON.parse(msg) as { stage?: string; detail?: string }
+    return o.stage ? { stage: o.stage, detail: o.detail } : { text: msg }
+  } catch { return { text: msg } }
+}
+
 function LoadingScreen({ progress }: { progress: string }) {
+  const p = parseProgress(progress)
+  const idx = p.stage ? STAGES.findIndex(s => s.id === p.stage) : -1
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', gap: 14,
+      height: '100%', gap: 18,
     }}>
-      {/* SVG spinner — arc rotating around a dim circle */}
-      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"
+      <svg width="34" height="34" viewBox="0 0 40 40" fill="none"
         style={{ animation: 'spin 0.9s linear infinite' }}>
         <circle cx="20" cy="20" r="16" stroke="var(--accent)" strokeWidth="3" opacity="0.12"/>
         <path d="M20 4 A16 16 0 0 1 36 20"
           stroke="var(--accent)" strokeWidth="3" strokeLinecap="round"/>
       </svg>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{progress}</div>
+
+      {idx < 0 ? (
+        <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{p.text ?? progress}</div>
+      ) : (
+        <div style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {STAGES.map((s, i) => {
+            const done = i < idx
+            const now = i === idx
+            return (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', gap: 9, fontSize: 12.5,
+                color: done ? 'var(--text-dim)' : now ? 'var(--text-primary)' : 'var(--text-disabled)',
+              }}>
+                <span style={{
+                  width: 14, textAlign: 'center', fontFamily: 'monospace',
+                  color: done ? '#7B9E5A' : now ? 'var(--accent)' : 'var(--text-disabled)',
+                }}>
+                  {done ? '✓' : now ? '●' : '○'}
+                </span>
+                <span style={{ flex: 1 }}>{s.label}</span>
+                {now && p.detail && (
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                    {p.detail}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+// 失敗した対象と再試行を持つ。元は message だけを出し「戻る」で idle へ帰すだけで、
+// 何をしようとして失敗したのかも、同じ条件でやり直す手段も失っていた
+function ErrorScreen({ message, target, onRetry, onPickOther, onBack }: {
+  message: string
+  target?: string
+  onRetry?: () => void
+  onPickOther: () => void
+  onBack: () => void
+}) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', gap: 16, padding: 40,
+      height: '100%', gap: 14, padding: 40,
     }}>
-      <svg width="36" height="36" viewBox="0 0 16 16" fill="none">
-        <path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#EF4444" strokeWidth="1.4" strokeLinejoin="round"/>
-        <line x1="8" y1="6.5" x2="8" y2="10"   stroke="#EF4444" strokeWidth="1.4" strokeLinecap="round"/>
-        <circle cx="8" cy="11.5" r="0.7" fill="#EF4444"/>
+      <svg width="30" height="30" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#C0624B" strokeWidth="1.4" strokeLinejoin="round"/>
+        <line x1="8" y1="6.5" x2="8" y2="10" stroke="#C0624B" strokeWidth="1.4" strokeLinecap="round"/>
+        <circle cx="8" cy="11.5" r="0.7" fill="#C0624B"/>
       </svg>
-      <div style={{ color: '#EF4444', fontWeight: 600 }}>解析エラー</div>
+      <div style={{ color: '#C0624B', fontWeight: 600, fontSize: 14 }}>解析できませんでした</div>
+
+      {target && (
+        <div style={{
+          fontSize: 11.5, color: 'var(--text-dim)', fontFamily: 'monospace',
+          maxWidth: 440, overflow: 'hidden', textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'center',
+        }}>
+          {target}
+        </div>
+      )}
+
       <div style={{
-        color: 'var(--text-secondary)', textAlign: 'center', maxWidth: 400,
-        background: 'var(--bg-panel)', padding: '12px 16px', borderRadius: 8,
-        fontFamily: 'monospace', fontSize: 12,
+        color: 'var(--text-secondary)', maxWidth: 440, maxHeight: 160, overflowY: 'auto',
+        background: 'var(--bg-panel)', padding: '11px 15px', borderRadius: 8,
+        fontFamily: 'monospace', fontSize: 11.5, lineHeight: 1.7,
+        border: '1px solid var(--border)', whiteSpace: 'pre-wrap',
       }}>
         {message}
       </div>
-      <button onClick={onRetry} style={{
-        background: 'var(--accent)', color: '#1A1107', border: 'none', padding: '8px 20px',
-        borderRadius: 6, cursor: 'pointer', fontWeight: 500,
-      }}>
-        戻る
-      </button>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {onRetry && (
+          <button onClick={onRetry} style={{
+            background: 'var(--accent)', color: '#1A1107', border: 'none',
+            padding: '7px 18px', borderRadius: 6, fontWeight: 600, fontSize: 12,
+          }}>
+            同じ対象でもう一度
+          </button>
+        )}
+        <button onClick={onPickOther} style={{
+          background: 'transparent', color: 'var(--text-secondary)',
+          border: '1px solid var(--border-interactive)',
+          padding: '7px 16px', borderRadius: 6, fontSize: 12,
+        }}>
+          別の場所を選ぶ
+        </button>
+        <button onClick={onBack} style={{
+          background: 'transparent', color: 'var(--text-dim)', border: 'none',
+          padding: '7px 12px', borderRadius: 6, fontSize: 12,
+        }}>
+          最近使用へ
+        </button>
+      </div>
+
+      {target && (
+        <button
+          onClick={() => navigator.clipboard?.writeText(`${target}\n${message}`)}
+          style={{
+            background: 'transparent', color: 'var(--text-dim)', border: 'none',
+            fontSize: 11, padding: '2px 8px',
+          }}
+        >
+          対象とエラーをコピー
+        </button>
+      )}
     </div>
   )
 }

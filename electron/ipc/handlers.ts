@@ -50,9 +50,9 @@ async function analyzeWithCache(
     }
   }
 
-  sendProgress('Gitログを取得中...')
-  const result = await analyzeRepo(repoPath)
-  sendProgress('解析完了')
+  // 段階は「実在する工程」だけを名前で出す。偽のパーセンテージは出さない
+  const result = await analyzeRepo(repoPath, p => sendProgress(
+    JSON.stringify({ stage: p.stage, detail: p.detail })))
 
   saveCache(repoPath, headCommit, result)
   return { ok: true, data: result, fromCache: false }
