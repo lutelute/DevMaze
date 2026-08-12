@@ -9,6 +9,7 @@ import { analyzeRepo } from '../shared/analyzer/index'
 import { formatStruggles } from '../shared/analyzer/struggle'
 import { formatHotspots } from '../shared/analyzer/hotspot'
 import { buildReport } from '../shared/analyzer/report'
+import { getPatches } from '../shared/analyzer/diff'
 import type { StruggleKind } from '../shared/types'
 
 const server = new Server(
@@ -56,6 +57,49 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           repo_path: {
             type: 'string',
             description: 'Gitリポジトリのパス',
+          },
+        },
+        required: ['repo_path'],
+      },
+    },
+    {
+      name: 'get_struggle_diff',
+      description:
+        '沼（詰まった箇所）で実際に書かれたコードの差分を返す。' +
+        'get_struggles が返すのは「どこで何回詰まったか」までで、' +
+        '「技術的に何を試して何が効いたか」は差分を読まないと分からない。' +
+        'ノイズ（lock ファイル・dist 等）は除外し、量が多い場合は削ったうえで' +
+        '削ったことを明示する。取得できなかったファイルも理由つきで返す' +
+        '（GitHub キャッシュは 100KB 以上のファイルの中身を持っていない）。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          repo_path: { type: 'string', description: 'Gitリポジトリのパス' },
+          struggle_id: {
+            type: 'string',
+            description: '対象の沼のID（get_struggles の id）。省略時は最も深刻なもの',
+          },
+          only_struggle_files: {
+            type: 'boolean',
+            description:
+              'その沼の関与ファイルだけに絞る（デフォルト: true）。' +
+              'false にすると同じコミットの他の変更も入り、量が数倍になる',
+            default: true,
+          },
+          max_commits: {
+            type: 'number',
+            description: '読むコミット数の上限（デフォルト: 12）。沼は100件を超えることがある',
+            default: 12,
+          },
+          max_lines_per_file: {
+            type: 'number',
+            description: '1ファイルあたりの最大行数（デフォルト: 200）',
+            default: 200,
+          },
+          context: {
+            type: 'number',
+            description: '差分の文脈行数（デフォルト: 1）。3にすると量が3倍近くなる',
+            default: 1,
           },
         },
         required: ['repo_path'],
@@ -199,6 +243,92 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ),
       ].join('\n')
       return { content: [{ type: 'text', text }] }
+    }
+
+    if (name === 'get_struggle_diff') {
+      const a = (args ?? {}) as Record<string, unknown>
+      const episode = a.struggle_id
+        ? result.struggles.find(e => e.id === a.struggle_id)
+        : [...result.struggles].sort((x, y) => y.severity - x.severity)[0]
+
+      if (!episode) {
+        return {
+          content: [{
+            type: 'text',
+            text: a.struggle_id
+              ? `沼 ${String(a.struggle_id)} が見つかりません。get_struggles で id を確認してください。`
+              : '沼は検出されていません。' +
+                (result.stats.fileStatsCoverage < 0.5
+                  ? `ただしファイル差分の取得率が ${Math.round(result.stats.fileStatsCoverage * 100)}% しかないため、` +
+                    '「無い」のか「見えていない」のか判断できません（shallow clone の可能性）。'
+                  : ''),
+          }],
+        }
+      }
+
+      const maxCommits = Number(a.max_commits ?? 12)
+      // 深刻度の根拠になっているのは中心のファイル。既定ではそこだけ読む
+      const onlyPaths = (a.only_struggle_files ?? true)
+        ? episode.files.map(f => f.path)
+        : undefined
+      const hashes = episode.commits.map(c => c.hash)
+      const used = hashes.slice(0, maxCommits)
+
+      const patches = await getPatches(repoPath, used, {
+        onlyPaths,
+        maxLinesPerFile: Number(a.max_lines_per_file ?? 200),
+        context: Number(a.context ?? 1),
+      })
+
+      const byHash = new Map(episode.commits.map(c => [c.hash, c]))
+      const lines: string[] = [
+        `# ${episode.title}`,
+        '',
+        `- 種別: ${episode.kind} / 深刻度: ${episode.severity}`,
+        `- 期間: ${new Date(episode.startTimestamp).toLocaleString('ja-JP')} 〜 ` +
+          `${new Date(episode.endTimestamp).toLocaleString('ja-JP')}（${episode.durationHours} 時間）`,
+        `- コミット: ${hashes.length} 件` +
+          (used.length < hashes.length ? `（うち先頭 ${used.length} 件の差分を返す）` : ''),
+        `- 夜間(22-5時)の割合: ${Math.round(episode.nightRatio * 100)}%`,
+        ...(episode.recurrence
+          ? [`- 再発: ${episode.recurrence.file} で ${episode.recurrence.times} 回目のうち ` +
+             `${episode.recurrence.index} 回目（初回 ${new Date(episode.recurrence.firstAt).toLocaleDateString('ja-JP')}）`]
+          : []),
+        ...(episode.escape
+          ? [`- 抜けた印: ${episode.escape.message}`]
+          : ['- **抜けた印なし** — まだ抜けていない可能性がある']),
+        '',
+        '## 判定根拠',
+        ...episode.evidence.map(e => `- ${e}`),
+        '',
+        '## 差分',
+      ]
+
+      let skippedTotal = 0
+      for (const p of patches) {
+        const c = byHash.get(p.hash)
+        lines.push('', `### ${p.hash.slice(0, 7)} ${c?.message ?? ''}`)
+        if (p.files.length === 0 && p.skipped.length === 0) {
+          lines.push('（対象ファイルへの変更なし）')
+        }
+        for (const f of p.files) {
+          lines.push('', `**${f.path}**${f.truncated ? '（行数の上限で切り詰め）' : ''}`, '```diff', f.patch, '```')
+        }
+        for (const s of p.skipped) {
+          skippedTotal++
+          lines.push('', `> 取得できず: ${s.path} — ${s.reason}`)
+        }
+      }
+
+      if (used.length < hashes.length || skippedTotal > 0) {
+        lines.push('', '## この出力で削ったもの')
+        if (used.length < hashes.length) {
+          lines.push(`- ${hashes.length - used.length} コミットぶんの差分（max_commits=${maxCommits} の上限）`)
+        }
+        if (skippedTotal > 0) lines.push(`- ${skippedTotal} ファイルが取得できなかった（上の理由を参照）`)
+      }
+
+      return { content: [{ type: 'text', text: lines.join('\n') }] }
     }
 
     if (name === 'get_struggles') {
