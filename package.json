@@ -1,6 +1,6 @@
 {
   "name": "devmaze",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Git development history visualizer — a maze of your coding journey",
   "main": "dist-electron/main.js",
   "scripts": {

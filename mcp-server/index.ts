@@ -13,7 +13,7 @@ import { getPatches } from '../shared/analyzer/diff'
 import type { StruggleKind } from '../shared/types'
 
 const server = new Server(
-  { name: 'devmaze', version: '0.5.0' },
+  { name: 'devmaze', version: '0.5.1' },
   { capabilities: { tools: {} } }
 )
 
