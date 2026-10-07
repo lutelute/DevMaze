@@ -4,12 +4,17 @@
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "strict": true,
+    "esModuleInterop": true,
+    "types": ["node"],
     "paths": {
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["vite.config.ts", "shared"]
+  "include": ["electron", "mcp-server", "shared", "tests", "src/global.d.ts"]
 }

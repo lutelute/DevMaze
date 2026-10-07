@@ -1,0 +1,64 @@
+/* ============================================================
+   DevMaze design tokens — Sand / Earth dark
+   色は shared/theme.ts（コミット種別・深刻度）と、ここ（画面の地と文字）の2箇所だけ。
+   コンポーネントはこのトークンだけを参照し、生の色を書かない。
+   ============================================================ */
+:root {
+  /* 地 */
+  --bg-base:     #15100A;
+  --bg-panel:    #1C1409;
+  --bg-elevated: #241A0D;
+  --bg-hover:    #2D2010;
+  --bg-active:   #3A2A15;
+  --bg-overlay:  rgba(12, 8, 3, 0.62);
+  --bg-glass:    rgba(21, 16, 10, 0.86);
+
+  /* 線。操作できる要素の輪郭は 3:1 以上（WCAG 1.4.11）を満たす strong を使う */
+  --border-subtle: #27190C;
+  --border:        #3A2A14;
+  --border-strong: #85632F;
+
+  /* 文字。bg-base に対するコントラスト比: primary 15 / secondary 7.2 / dim 5.0 / disabled 2.9 */
+  --text-primary:   #F1E6CC;
+  --text-secondary: #BDA26F;
+  --text-dim:       #9A8362;
+  --text-disabled:  #5F4E37;
+  --text-inverse:   #1A1107;
+
+  /* 強調 */
+  --accent:       #D9A84B;
+  --accent-hover: #E6B85C;
+  --accent-soft:  rgba(217, 168, 75, 0.14);
+  --accent-line:  rgba(217, 168, 75, 0.32);
+  --danger:       #C4604A;
+  --danger-soft:  rgba(196, 96, 74, 0.14);
+  --ok:           #8FB76A;
+  --warn:         #C98E3C;
+
+  /* 寸法 */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;  --sp-5: 20px;  --sp-6: 24px;
+  --r-1: 4px;   --r-2: 6px;   --r-3: 8px;    --r-4: 12px;
+  --header-h: 44px;
+  --sidebar-w: 264px;
+  --rail-w: 44px;
+  --detail-w: 304px;
+
+  /* 文字 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans",
+               "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "JetBrains Mono", Consolas, monospace;
+  --fs-xs: 10.5px;  --fs-sm: 11.5px;  --fs-md: 13px;  --fs-lg: 14.5px;  --fs-xl: 18px;
+
+  /* 影・動き */
+  --shadow-1: 0 2px 8px rgba(0,0,0,0.45);
+  --shadow-2: 0 8px 28px rgba(0,0,0,0.55);
+  --shadow-3: 0 20px 56px rgba(0,0,0,0.7);
+  --t-fast: 0.1s ease;
+  --t-base: 0.16s ease;
+
+  --z-float: 10;
+  --z-bar: 20;
+  --z-popover: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+}

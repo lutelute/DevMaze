@@ -19,12 +19,17 @@ export interface AnalyzeProgress {
   detail?: string
 }
 
+export interface AnalyzeRepoOptions {
+  maxCommits?: number
+}
+
 export async function analyzeRepo(
   repoPath: string,
   onStage?: (p: AnalyzeProgress) => void,
+  opts: AnalyzeRepoOptions = {},
 ): Promise<AnalysisResult> {
   onStage?.({ stage: 'git' })
-  const commits = await analyzeGitRepo(repoPath)
+  const commits = await analyzeGitRepo(repoPath, { maxCommits: opts.maxCommits })
 
   onStage?.({ stage: 'graph', detail: `${commits.length} コミット` })
   const graph = buildMazeGraph(commits)

@@ -1,0 +1,23 @@
+/* 概要 */
+.score { display: flex; align-items: baseline; gap: 8px; }
+.scoreNum { font-family: var(--font-mono); font-size: 28px; font-weight: 700; line-height: 1; color: var(--score-color); }
+.scoreDetails { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.scoreLine { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); }
+.scoreLabel { flex: 1; color: var(--text-dim); }
+.scoreCalc { font-family: var(--font-mono); color: var(--text-secondary); }
+.scoreSub { font-family: var(--font-mono); font-weight: 600; min-width: 26px; text-align: right; }
+
+.hist { display: flex; align-items: flex-end; gap: 1px; height: 36px; }
+.histBar { flex: 1; border-radius: 1px; background: var(--accent); opacity: 0.6; min-height: 2px; }
+.histBar[data-night="true"] { background: var(--danger); opacity: 0.85; }
+.histBar[data-zero="true"] { opacity: 0.18; }
+.histAxis { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 2px; }
+
+.filterLabel { flex: 1; font-size: var(--fs-sm); }
+.escape { display: block; font-size: var(--fs-xs); color: var(--ok); margin-top: 2px; }
+.meterRow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.meterRow > :first-child { flex: 1; }
+.meterNum { font-family: var(--font-mono); font-size: 9.5px; color: var(--row-color); }
+.risk { width: 26px; text-align: right; font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; color: var(--row-color); margin-top: 1px; }
+.dir { direction: rtl; text-align: left; }
+.repoIcon { flex-shrink: 0; color: var(--text-dim); margin-top: 2px; }

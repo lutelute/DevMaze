@@ -1,0 +1,21 @@
+.backdrop {
+  position: fixed; inset: 0; z-index: var(--z-modal); background: var(--bg-overlay); backdrop-filter: blur(2px);
+  display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh;
+}
+.panel {
+  width: min(680px, 86vw); max-height: 68vh; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: var(--r-4); box-shadow: var(--shadow-3);
+  animation: fadeIn var(--t-base);
+}
+.input { padding: 14px 16px; font-size: var(--fs-lg); background: var(--bg-base); border-bottom: 1px solid var(--border); }
+.list { flex: 1; overflow-y: auto; }
+.none { padding: 18px 16px; font-size: var(--fs-sm); color: var(--text-dim); }
+.hit {
+  display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-left: 2px solid transparent; cursor: pointer;
+}
+.hit[data-active="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
+.hitMain { flex: 1; min-width: 0; }
+.hitTitle { font-size: var(--fs-sm); display: block; }
+.hitSub { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-dim); display: block; }
+.where { flex-shrink: 0; font-size: 9.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: var(--r-1); padding: 1px 5px; }
+.foot { display: flex; gap: 14px; padding: 7px 16px; border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--text-dim); }

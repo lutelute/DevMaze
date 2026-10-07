@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSessions, shouldAggregate } from '../shared/analyzer/session'
+import { buildSessions, shouldAggregate } from '../shared/maze/sessions'
 import type { MazeNode, CommitType } from '../shared/types'
 
 let seq = 0

@@ -1,0 +1,59 @@
+.wrap { position: relative; width: 100%; height: 100%; background: var(--bg-base); overflow: hidden; }
+.svg { width: 100%; height: 100%; display: block; background: var(--bg-base); }
+
+/* 倍率に応じた文字の出し分け。zoom のたびに React を回さず、属性1つで切り替える */
+.lblHash, .lblCommit, .lblDate, .lblGap, .lblBand { transition: opacity var(--t-base); pointer-events: none; }
+.svg[data-zoom="far"] .lblHash, .svg[data-zoom="far"] .lblCommit, .svg[data-zoom="far"] .lblDate,
+.svg[data-zoom="far"] .lblGap, .svg[data-zoom="far"] .lblBand { opacity: 0; }
+.svg[data-zoom="mid"] .lblHash { opacity: 0; }
+.svg[data-zoom="mid"] .lblCommit, .svg[data-zoom="mid"] .lblDate { opacity: 0.6; }
+.svg[data-zoom="mid"] .lblGap, .svg[data-zoom="mid"] .lblBand { opacity: 0.8; }
+.svg[data-zoom="close"] .lblHash { opacity: 0.75; }
+.svg[data-zoom="far"] .lblMilestone { opacity: 0.6; }
+
+.node { cursor: pointer; transition: opacity var(--t-base); }
+.node[data-dim="true"] { opacity: 0.14; }
+.node .glow { opacity: 0; transition: opacity var(--t-fast); }
+.node:hover .glow { opacity: 0.28; }
+.node[data-selected="true"] .glow { opacity: 0.35; }
+.node[data-lit="true"] .glow { opacity: 0.2; }
+
+/* 浮いている操作パネルの共通の地 */
+.float {
+  position: absolute; z-index: var(--z-float);
+  background: var(--bg-glass); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); border-radius: var(--r-3);
+}
+.zoomBar { left: 14px; bottom: 14px; display: flex; align-items: center; gap: 4px; padding: 4px 6px; }
+.zoomPct { min-width: 42px; text-align: center; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-secondary); }
+.vsep { width: 1px; height: 14px; background: var(--border); margin: 0 3px; }
+
+.unitBar {
+  left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 28px);
+  display: flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap;
+}
+.chip { height: 22px; padding: 0 8px; border-radius: var(--r-1); border: 1px solid var(--border); color: var(--text-secondary); font-size: var(--fs-sm); flex-shrink: 0; }
+.chip:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.chip[data-active="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); font-weight: 600; }
+.dim { color: var(--text-dim); }
+.hint { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+.legend { top: 12px; right: 12px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); }
+.legendHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-dim); font-weight: 600; letter-spacing: 0.06em; }
+.legendToggle { color: var(--text-dim); font-size: 11px; padding: 0 2px; }
+.legendToggle:hover { color: var(--text-primary); }
+.legendRow { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.legendMini { top: 12px; right: 12px; padding: 5px 9px; font-size: var(--fs-xs); color: var(--text-dim); }
+.legendMini:hover { color: var(--text-primary); }
+
+.minimap { right: 16px; bottom: 54px; padding: 0; overflow: hidden; cursor: pointer; transition: opacity var(--t-base); }
+.minimap[data-hidden="true"] { opacity: 0; pointer-events: none; }
+
+.tooltip {
+  position: fixed; pointer-events: none; z-index: var(--z-popover); max-width: 340px;
+  padding: 9px 13px; border-radius: var(--r-3); font-size: var(--fs-sm); color: var(--text-primary);
+  background: rgba(22, 14, 6, 0.96); border: 1px solid var(--border); box-shadow: var(--shadow-2); backdrop-filter: blur(10px);
+}
+.ttTitle { font-weight: 600; margin-bottom: 4px; line-height: 1.4; }
+.ttSub { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-dim); }
+.ttLine { font-size: var(--fs-xs); color: var(--text-dim); margin-top: 3px; }

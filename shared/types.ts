@@ -239,3 +239,94 @@ export const IPC = {
   ANALYSIS_PROGRESS: 'repo:progress',
   GET_RECENT_REPOS: 'repo:getRecent',
 } as const
+
+// ===================================================================
+// ナレッジ層（RAG / GraphRAG / 教訓）
+//
+// 解析結果は「読み物」のままでは知識にならない。単位を揃え（chunk）、
+// 関係を持たせ（graph）、人が読める置き場に落とす（vault）ための形。
+// すべて AnalysisResult から純粋関数で導出でき、LLM や DB には依存しない。
+// ===================================================================
+
+export type KNodeKind =
+  | 'repo' | 'commit' | 'file' | 'struggle' | 'session' | 'phase' | 'author' | 'tag'
+
+export type KEdgeKind =
+  | 'PARENT'       // commit → commit（親）
+  | 'REVERTS'      // commit → commit（取り消した相手）
+  | 'TOUCHES'      // commit → file
+  | 'AUTHORED'     // author → commit
+  | 'TAGGED'       // tag → commit
+  | 'PART_OF'      // commit → struggle（この沼に属する）
+  | 'ESCAPED_BY'   // struggle → commit（抜けた印）
+  | 'INVOLVES'     // struggle → file（関与ファイル、props.touches）
+  | 'RECURS_ON'    // struggle → file（同じ場所で再発、props.index/times）
+  | 'IN_SESSION'   // commit → session
+  | 'IN_PHASE'     // session → phase / commit → phase
+  | 'HOTSPOT_OF'   // file → repo（props.risk）
+  | 'FOLLOWS'      // session → session（時間順）
+
+export type KProps = Record<string, string | number | boolean | null | string[]>
+
+export interface KNode {
+  id: string
+  kind: KNodeKind
+  label: string
+  props: KProps
+}
+
+export interface KEdge {
+  id: string
+  kind: KEdgeKind
+  from: string
+  to: string
+  props?: KProps
+}
+
+export interface KnowledgeGraph {
+  repo: string
+  repoPath: string
+  generatedAt: string
+  nodes: KNode[]
+  edges: KEdge[]
+}
+
+export type ChunkKind = 'repo' | 'struggle' | 'hotspot' | 'phase' | 'activity'
+
+/** RAG の最小単位。1件で自己完結し、出所（provenance）を必ず持つ */
+export interface KnowledgeChunk {
+  id: string
+  kind: ChunkKind
+  title: string
+  /** 埋め込みに渡す本文（Markdown） */
+  text: string
+  metadata: {
+    repo: string
+    kind: ChunkKind
+    severity?: number
+    struggleKind?: StruggleKind
+    files: string[]
+    start?: string
+    end?: string
+    escaped?: boolean
+    recurrence?: number
+    [key: string]: string | number | boolean | string[] | undefined
+  }
+  provenance: {
+    repoPath: string
+    hashes: string[]
+    generatedAt: string
+  }
+}
+
+export interface VaultFile {
+  /** vault ルートからの相対パス */
+  path: string
+  content: string
+}
+
+export interface KnowledgeExport {
+  graph: KnowledgeGraph
+  chunks: KnowledgeChunk[]
+  vault: VaultFile[]
+}

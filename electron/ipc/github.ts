@@ -1,8 +1,9 @@
-import path from 'path'
-import fs from 'fs'
-import { app } from 'electron'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import path from 'node:path'
+import fs from 'node:fs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { githubReposDir } from '../../shared/cache-path'
+import type { RemoteCheck, RepoStatus, FetchResult } from '../../shared/ipc'
 
 const execFileAsync = promisify(execFile)
 
@@ -15,10 +16,6 @@ const FETCH_DEPTH = 1000
 // 100KB 以下だけ取れば、ソースコードはほぼ全部そろって画像や成果物は避けられる
 // （AtelierX 896コミットで 15MB → 21MB、6秒）。
 const BLOB_FILTER = '--filter=blob:limit=100k'
-
-function githubReposDir(): string {
-  return path.join(app.getPath('userData'), 'github-repos')
-}
 
 export interface ParsedGithubRepo {
   url: string
@@ -159,11 +156,7 @@ export function isGithubCache(repoPath: string): boolean {
  * リモートから取り込む。取り込めた新着コミット数を返す。
  * ネットワークや認証で失敗しても解析は続けたいので、例外にせず error を返す。
  */
-export async function fetchLatest(repoPath: string): Promise<{
-  fetched: boolean
-  newCommits: number
-  error?: string
-}> {
+export async function fetchLatest(repoPath: string): Promise<FetchResult> {
   const bare = isGithubCache(repoPath)
   const gitArgs = bare ? ['--git-dir', repoPath] : ['-C', repoPath]
 
@@ -207,15 +200,6 @@ export async function fetchLatest(repoPath: string): Promise<{
 
   const after = await countCommits()
   return { fetched: true, newCommits: Math.max(0, after - before) }
-}
-
-export interface RemoteCheck {
-  /** リモートに手元より新しいコミットがあるか */
-  behind: boolean
-  branch: string | null
-  localHead: string | null
-  remoteHead: string | null
-  error?: string
 }
 
 /**
@@ -282,13 +266,6 @@ export async function checkRemote(repoPath: string): Promise<RemoteCheck> {
 
 // ---- GitHub REST API ステータス取得 ----
 
-export interface RepoStatus {
-  prs: number
-  issues: number
-  ciStatus: 'success' | 'failure' | 'pending' | 'unknown'
-  ciName: string | null
-}
-
 function ghHeaders(): Record<string, string> {
   const h: Record<string, string> = {
     'Accept': 'application/vnd.github+json',
@@ -351,3 +328,5 @@ export async function fetchRepoStatus(owner: string, name: string): Promise<Repo
 
   return { prs, issues, ciStatus, ciName }
 }
+
+export type { RemoteCheck, RepoStatus, FetchResult }

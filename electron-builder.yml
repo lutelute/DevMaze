@@ -6,10 +6,12 @@ directories:
   output: release/${version}
   buildResources: build
 
+# main / preload / renderer はすべて束ね済みなので node_modules は要らない
 files:
   - dist/**/*
   - dist-electron/**/*
-  - node_modules/**/*
+  - package.json
+  - "!node_modules/**/*"
 
 mac:
   target:
@@ -31,4 +33,4 @@ linux:
 publish:
   provider: github
   owner: lutelute
-  repo: devmaze
+  repo: DevMaze

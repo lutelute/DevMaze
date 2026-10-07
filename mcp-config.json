@@ -3,7 +3,7 @@
   "mcpServers": {
     "devmaze": {
       "command": "node",
-      "args": ["/Users/shigenoburyuto/Documents/GitHub/tool_dev_SGNB/DevMaze/dist-mcp/server.js"]
+      "args": ["/Users/shigenoburyuto/dev/github/tool_dev_SGNB/DevMaze/dist-mcp/server.js"]
     }
   }
 }

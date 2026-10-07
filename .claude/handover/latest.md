@@ -1,90 +1,54 @@
-# 引き継ぎ: DevMaze — デザイナ33提案の実装対象を全部消化。v0.5.0/v0.5.1リリース済み、v0.6.0をビルド中。実バグ4件も修正
+# 引き継ぎ: DevMaze — v1.0 完全改修をブランチ rebuild/v1 で完了（未コミット81件）。Electron 44/React 19/Vite 8、zustand、決定的レイアウト、ナレッジ層+MCP 11ツール。/Applications に 1.0.0 を導入済み
 
-> 保存 2026-08-13 11:42 ／ 状態 **完了**
-> ブランチ `main` @ `5a1ba57` ／ **未コミット 5件**
-> 直近コミット: feat: 進捗の段階表示・失敗地点からの再開・キーボード操作
+> 保存 2026-10-08 01:26 ／ 状態 **確認待ち**
+> ブランチ `rebuild/v1` @ `f88aa6c` ／ **未コミット 81件** ／ 追跡ブランチなし（push先未設定）
+> 直近コミット: chore: v0.6.0
 >
-> **次の一手**: v0.6.0 のビルド→インストール→タグ→リリースを終えたら完了。以降は新規要望待ち
+> **次の一手**: ユーザーの確認を取ってから rebuild/v1 をコミット → main にマージ → v1.0.0 タグ・リリース。ナレッジの蒸留ループ（LLM で教訓化）と横断検索は次の段階
 
 ---
 ## いまどこ
 
-デザイナ5名（IA/VIS/DV=Claude、IX/CR=Codex）+ fable の統合案をもとに実装し、
-**実装対象とした提案は全部消化した**。v0.5.0 / v0.5.1 はリリース済み、
-v0.6.0（IX-3/4/6）をビルド中。ソースは全部 push 済み。
-
-ユーザーは短い言葉で方向だけ示すスタイル（「進めて」「やってみて」「必要」「解消」）。
-**文字とアスキー図では判断してもらえない。** 実機スクショか before/after の数字を出すこと。
-1回「よくわからない」「見た目ないとわからないよ」で差し戻されている。
+「完全改修したい」を受けて、解析層だけ残し土台から作り直した。ブランチ `rebuild/v1`、**81件すべて未コミット**（ユーザーがコミットを頼んでいないため）。
+typecheck 2本・vitest 159件・build・配布物ビルドすべて通過。AtelierX（913件）と DevMaze 自身で実機確認済み。
+`/Applications/DevMaze.app` は 1.0.0 に差し替え済み（配布物は `/tmp/devmaze-release/mac-arm64/`）。
+追加依頼「RAG化・GraphRAG化・知財化の方法論」は三段階（chunks / graph / lesson）として整理し README「ナレッジ化の考え方」に書いた。実装は抽出・構造化と蒸留用素材の口まで。
 
 ## 次の一手
 
-1. v0.6.0: ビルド完了 → `/Applications` へ差し替え → `git tag v0.6.0` → `gh release create`
-2. それが終われば一区切り。残っているデザイナ提案は「採らない」と判断したものだけ
-   （IA-2/3/7 の情報設計、VIS-6 のタイポスケール、DV-5 のファイル×時間マトリクス）。
-   全文は scratchpad の `ia.md` `visual.md` `dataviz.md` `ix.md` `critic.md` `fable.md`、
-   番号付き一覧は `devmaze-design-review.html`
+1. ユーザーに見てもらい、OK なら `git add -A && git commit`（Co-Authored-By 付き）→ main へマージ → `git tag v1.0.0` → `gh release create`
+2. 残課題（任意）: `detectZones` が同じ開始日・同じ件数のフェーズを2件出すことがある（DevMaze 自身で「機能開発 5/6〜 10」が2行）。旧版からの挙動で未着手
+3. ナレッジの次段階: `search_knowledge`（全リポジトリ横断、BM25 で可）、教訓の採用・編集画面、CLAUDE.md/memory への先回り提示
 
 ## 鉄則・地雷
 
-- **実機検証の前に `document.visibilityState` を見る。** Electron のウィンドウが背面に回ると
-  rAF が止まり、d3 のトランジションが1フレームも進まない。ズームも全体表示も「壊れた」ように
-  見えるがコードは正常。CDP の captureScreenshot も固まる。
-  復帰は `osascript -e 'tell application id "com.github.Electron" to activate'`。
-  `Page.bringToFront` は Electron に効かない。
-- **非表示のとき `innerText` は空を返す**（レイアウトに依存するため）。
-  DOM の確認には `textContent` か `querySelectorAll` を使う。
-  これで「ヘルプが開かない」と誤診した（実際は開いていた）。
-- **React の state 更新は非同期。** eval で「キーを送る→即座に DOM を読む」は必ず失敗する。
-  2秒待つか、DOM を直接数える。
-- **倍率を測るときは毎回リセット。** バナー(36px)が5分ごとに再表示され、詳細パネル(280px)の
-  開閉でも変わる。`location.reload()` → バナー✕ → 測定。
-  怠って 59/69/71/73/74% とバラバラの数字を出した。
-- **zsh は `$VAR` を単語分割しない。** `${=VAR}` が要る。
-- **JSX の `return (` 直後に `{/* コメント */}` は置けない**（500 で画面が真っ白）。
-- **`useCallback` の関数を、定義より前の `useEffect` の依存配列に入れると TDZ で落ちる**（真っ白）。
-- 色・形・ラベルは `shared/theme.ts` が唯一の出どころ。`satisfies Record<CommitType, TypeStyle>`
-  なので種別が増えたらコンパイルで落ちる。
-- `AnalysisResult` の中身が変わったら `electron/ipc/cache.ts` の `CACHE_VERSION` を上げる（現在4）。
-- iCloud 配下ではビルドが必ず落ちる。`--dir -c.directories.output=/tmp/devmaze-release`。
-  **作ってから差し替える**（`test -x .../MacOS/DevMaze` を確認してから rm）。
-- `gh release create` は draft + `untagged-...` の URL を先に返す。97MB のアップロード完了を
-  待ってから `gh release view` で確認する。
+- **simple-git 4 の環境ガード**: `.env(k,v)` は `simpleGit(path, { allowEnvironment: ['GIT_NO_LAZY_FETCH'] })` と組でないと拒否される。拒否は catch で「リポジトリが見つかりません」に化ける。共通ヘルパー `shared/analyzer/gitenv.ts` を必ず使う。default export も無い（`{ simpleGit }`）
+- **CDP は 9223**（`DEVMAZE_CDP_PORT=9223`）。9222 は TiN が常駐で握っている。ドライバは scratchpad の `cdp.mjs`（shot/eval/click/key/wait/logs/size）
+- `scripts/build.mjs` は直接実行時だけビルドする（`dev.mjs` が import するため。ガードを外すと dev 起動のたびに MCP まで全ビルドされ、他セッションが使っている `dist-mcp/server.js` を書き換える）
+- `dist-mcp/server.js` は他の Claude セッション 10 本が MCP として使用中。既存8ツールの名前・引数は変えない
+- `RowGeometry.mid` は**絶対座標**（最初は相対で返っていて、帯とラベルが全部1行目に重なった）
+- 沼の薄い帯は `<g opacity>` でまとめて描く。1枚ずつ重ねると30件が足し合わさって赤い壁になる
+- 塊の中（衝突で目標 y からずれた印）には札を出さない。`layout.pos()` との差で判定
+- 配布物は `--dir -c.directories.output=/tmp/devmaze-release`。node_modules は含めない（全部 esbuild で束ね済み）
+- 電源の都合で `electron` の postinstall がバイナリを落とさないことがある → `node node_modules/electron/install.js`
 
 ## 沼ったところ
 
-- **numstat の欠損対応**: `git log --all --numstat` は最初に見つからないオブジェクトで止まる。
-  blob が1つ欠けるだけで残り911件の差分を道連れにし、取得率0%になっていた。
-  README が謳っていた「部分出力の救出」は**この失敗モードで一度も効いていなかった**
-  （simple-git が stdOut を持たない。例外の中身を実測して確認）。
-  分割取得（200件→半分→1件）で 0%→100%。`tests/salvage.test.ts` に固定。
-- **行パッキングを左右対称で実装して効果ゼロ。** まとまり表示では compactLanes が全非0レーンを
-  ±1 に畳むので、どの行も span=1 になる。「空きは全部上側」と実測して初めて
-  上下別々（ups/downs）に直り 178→138px。
-- **インクの範囲は半径込みで測る。** 中心間距離で測って「半分が空」と誤診し、ユーザーに訂正した。
-- **沼の帯を箱で囲ったら30件が重なって赤い壁になった。** 地面に敷き直し、
-  さらに「選んだ1件だけ強く出す」に変更（`activeStruggleId`）。
-- **深刻度を目一杯振ったら66件すべてが最大の太さになった。** 荒れたリポジトリは深刻度100が大半。
-  上限は控えめに取る。
-- **fable の「6行で500px空→80%台」は実測では +3pt（71→74%）だった。** 詰めたぶんを
-  折り返し最適化が「行を1本増やす」方に使ったため。
-  **理論上限は面積比の平方根で約84%。** 実装の不出来と手法の限界を分けるため、上限を先に出す。
+- 最初の実機起動で「Gitリポジトリが見つかりません」。パスは正しく、素の Node でも通った。原因は simple-git 4 の環境ガード（上記）。エラー文に原因を添える直しを入れてから分かった
+- vite-plugin-electron を 1.x に上げる案は捨てた。API が変わっていて、Vite 8 + Electron の組み合わせで検証コストが読めない。esbuild で自前に束ねるほうが構成が単純で、配布物も小さくなる
+- 力学シミュレーションの維持は捨てた。1000件で 160 tick 回していたのを決定的なビースウォーム配置に替え、1000件 3〜7ms、テストで「重ならない」を保証できるようになった
 
 ## 判断待ち
 
-なし（v0.6.0 を切るかはユーザー判断だったが、「リリースまで進めて良い」の授権あり）。
+- コミット・マージ・タグ・リリースの可否
+- 凡例は既定で畳んだ（サイドバーの「種別で絞る」が形と色を兼ねる）。元に戻すなら `src/store/index.ts` の `legendOpen: false`
 
 ## 復元手順
 
 ```bash
-cd /Users/shigenoburyuto/Documents/GitHub/tool_dev_SGNB/DevMaze
-DEVMAZE_REPO="$HOME/Library/Application Support/devmaze/github-repos/lutelute/AtelierX.git" npm run dev
-npm test   # 77件
+cd /Users/shigenoburyuto/dev/github/tool_dev_SGNB/DevMaze
+DEVMAZE_CDP_PORT=9223 DEVMAZE_REPO="$HOME/Library/Application Support/devmaze/github-repos/lutelute/AtelierX.git" npm run dev
+npm test && npm run typecheck
+node scripts/mcpcall.mjs get_lesson_material '{"repo_path":"'$PWD'"}'
 ```
-
-検証ドライバ（すべて scratchpad）:
-- `cdp.mjs` — Node24 の global WebSocket 使用。`shot|eval|click|key|wait`
-- `logs.mjs` — console と例外（Page.reload してから9秒待つ）
-- `mcpcall.mjs` — MCP サーバーを直接叩く
-
-MCP はユーザースコープに登録済み（`claude mcp list` で devmaze が ✔ Connected）。
+スクショ: scratchpad の `current-*.png`（旧）/ `v1-*.png`（新）/ `packaged-window.png`（配布版）

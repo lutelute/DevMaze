@@ -15,7 +15,7 @@
  * - 沼1件が数十コミットになることがあり、全文を返すと簡単に数十万トークンになる。
  *   既定で行数・ファイル数に上限をかけ、**削ったことを必ず返り値に書く**。
  */
-import simpleGit, { type SimpleGit } from 'simple-git'
+import { gitAt } from './gitenv'
 import { isSignalFile } from './paths'
 
 export interface CommitPatch {
@@ -41,13 +41,6 @@ const DEFAULTS = {
   maxLinesPerFile: 400,
   maxFilesPerCommit: 12,
   context: 1,
-}
-
-/** 解析層と同じ設定の git。遅延取得を止めるのが要点 */
-function gitAt(repoPath: string): SimpleGit {
-  // env はキー単位で渡す。オブジェクトごと渡すと環境を置き換える扱いになり、
-  // PAGER を含むと simple-git に拒否されて全部落ちる
-  return simpleGit(repoPath).env('GIT_NO_LAZY_FETCH', '1')
 }
 
 /**

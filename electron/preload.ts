@@ -1,51 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { DevmazeApi } from '../shared/ipc'
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  openRepoDialog: (): Promise<string | null> =>
-    ipcRenderer.invoke('dialog:openRepo'),
-
-  analyzeRepo: (repoPath: string, forceRefresh?: boolean): Promise<unknown> =>
-    ipcRenderer.invoke('repo:analyze', repoPath, forceRefresh ?? false),
-
-  openGithubRepo: (input: string): Promise<unknown> =>
-    ipcRenderer.invoke('repo:openGithub', input),
-
-  getRecentRepos: (): Promise<string[]> =>
-    ipcRenderer.invoke('repo:getRecent'),
-
-  exportReport: (repoPath: string): Promise<unknown> =>
-    ipcRenderer.invoke('report:export', repoPath),
-
-  refreshRepo: (repoPath: string): Promise<unknown> =>
-    ipcRenderer.invoke('repo:refresh', repoPath),
-
-  checkRemote: (repoPath: string): Promise<unknown> =>
-    ipcRenderer.invoke('repo:checkRemote', repoPath),
-
-  openExternal: (url: string): Promise<unknown> =>
-    ipcRenderer.invoke('shell:openExternal', url),
-
-  onProgress: (callback: (msg: string) => void) => {
-    const listener = (_: unknown, msg: string) => callback(msg)
-    ipcRenderer.on('repo:progress', listener)
-    return () => ipcRenderer.removeListener('repo:progress', listener)
+// 契約（shared/ipc.ts）をそのまま通す薄い橋。チャンネル名はここに書かない。
+const api: DevmazeApi = {
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+  on: (channel, listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, ...args: unknown[]) =>
+      (listener as (...a: unknown[]) => void)(...args)
+    ipcRenderer.on(channel, wrapped)
+    return () => ipcRenderer.removeListener(channel, wrapped)
   },
+}
 
-  getInitialRepo: (): Promise<string | null> =>
-    ipcRenderer.invoke('dev:getInitialRepo'),
-
-  getGithubStatus: (owner: string, name: string): Promise<unknown> =>
-    ipcRenderer.invoke('github:getStatus', owner, name),
-
-  startWatch: (repoPath: string): void =>
-    ipcRenderer.send('watch:start', repoPath),
-
-  stopWatch: (): void =>
-    ipcRenderer.send('watch:stop'),
-
-  onWatchChanged: (callback: () => void) => {
-    const listener = () => callback()
-    ipcRenderer.on('watch:changed', listener)
-    return () => ipcRenderer.removeListener('watch:changed', listener)
-  },
-})
+contextBridge.exposeInMainWorld('devmaze', api)

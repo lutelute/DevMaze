@@ -1,4 +1,5 @@
-import simpleGit, { SimpleGit, type DefaultLogFields } from 'simple-git'
+import { simpleGit, type SimpleGit, type DefaultLogFields } from 'simple-git'
+import { gitAt } from './gitenv'
 import type { CommitNode, CommitType } from '../types'
 
 /**
@@ -17,15 +18,15 @@ export function classifyCommit(subject: string, body: string, parentCount: numbe
 function classifyText(message: string, parentCount: number): CommitType {
   const msg = message.toLowerCase()
   if (parentCount >= 2) return 'merge'
-  if (msg.startsWith('revert ') || /^revert\b/.test(msg)) return 'revert'
-  if (/\b(fix|bug|error|issue|hotfix|patch|defect|broken|crash)\b/.test(msg)) return 'error_fix'
-  if (/\b(wip|todo|fixme|hack|temp|temporary|draft|poc|prototype)\b/.test(msg)) return 'wip'
-  if (/\b(test|spec|coverage|jest|vitest|pytest|e2e|unit test|integration test)\b/.test(msg)) return 'test'
-  if (/\b(refactor|restructure|reorganize|clean.?up|simplif|extract|rename|rework|revamp)\b/.test(msg)) return 'refactor'
-  if (/\b(docs?|readme|changelog|document|comment|jsdoc|api doc)\b/.test(msg)) return 'docs'
-  if (/\b(chore|ci|cd|build|deps?|dependenc|lint|format|prettier|eslint|webpack|vite|rollup|package|npm|yarn|pip|cargo|gradle|bump)\b/.test(msg)) return 'chore'
-  if (/\b(feat|feature|add|new|implement|create|introduce)\b/.test(msg)) return 'feature'
-  if (/\b(release|v\d+\.\d+|version|deploy|publish)\b/.test(msg)) return 'release'
+  if (msg.startsWith('revert ') || /^revert\b/.test(msg) || /取り消し|巻き戻し|リバート|元に戻/.test(msg)) return 'revert'
+  if (/\b(fix|bug|error|issue|hotfix|patch|defect|broken|crash)\b/.test(msg) || /修正|不具合|バグ|エラー|直した|直す|壊れ|落ち|クラッシュ/.test(msg)) return 'error_fix'
+  if (/\b(wip|todo|fixme|hack|temp|temporary|draft|poc|prototype)\b/.test(msg) || /作業中|途中|暫定|仮実装|とりあえず|試作/.test(msg)) return 'wip'
+  if (/\b(test|spec|coverage|jest|vitest|pytest|e2e|unit test|integration test)\b/.test(msg) || /テスト/.test(msg)) return 'test'
+  if (/\b(refactor|restructure|reorganize|clean.?up|simplif|extract|rename|rework|revamp)\b/.test(msg) || /リファクタ|整理|構造|書き直|分割|改名|名前変更|切り出/.test(msg)) return 'refactor'
+  if (/\b(docs?|readme|changelog|document|comment|jsdoc|api doc)\b/.test(msg) || /ドキュメント|readme|説明|手順書|資料|コメント|引き継ぎ/.test(msg)) return 'docs'
+  if (/\b(chore|ci|cd|build|deps?|dependenc|lint|format|prettier|eslint|webpack|vite|rollup|package|npm|yarn|pip|cargo|gradle|bump)\b/.test(msg) || /環境|設定|依存|ビルド|整形|パッケージ|バージョン/.test(msg)) return 'chore'
+  if (/\b(feat|feature|add|new|implement|create|introduce)\b/.test(msg) || /追加|実装|新規|導入|対応|作成|できるように/.test(msg)) return 'feature'
+  if (/\b(release|v\d+\.\d+|version|deploy|publish)\b/.test(msg) || /リリース|公開/.test(msg)) return 'release'
   return 'normal'
 }
 
@@ -49,31 +50,33 @@ export async function getRemoteUrl(repoPath: string): Promise<string | undefined
   }
 }
 
-export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
-  // 部分クローンでは、手元に無いオブジェクトに触れた瞬間 git が黙って
-  // ネットワークへ取りに行く。解析のたびに数十秒止まる原因になるので禁止する
-  // （実測: 896コミットの解析が 78秒 → 2秒）。取れない差分は無いものとして扱う。
-  // env はキー単位で渡す。オブジェクトごと渡すと環境を丸ごと置き換える扱いになり、
-  // PAGER を含んでいると simple-git に拒否される（"allowUnsafePager"）。
-  const git: SimpleGit = simpleGit(repoPath).env('GIT_NO_LAZY_FETCH', '1')
+/** 解析するコミット数の既定の上限。GitHub の取得深さ（github.ts の FETCH_DEPTH）と揃えている */
+export const DEFAULT_MAX_COMMITS = 1000
+
+export async function analyzeGitRepo(
+  repoPath: string,
+  opts: { maxCommits?: number } = {},
+): Promise<CommitNode[]> {
+  const maxCount = `--max-count=${opts.maxCommits ?? DEFAULT_MAX_COMMITS}`
+  // 遅延取得を止めた git（理由と simple-git 4 の環境ガードの話は gitenv.ts）
+  const git: SimpleGit = gitAt(repoPath)
 
   // bare repository でも動作するように revparse で確認（checkIsRepo は bare で false を返す場合がある）
   try {
     await git.revparse(['HEAD'])
-  } catch {
-    throw new Error(`Gitリポジトリが見つかりません: ${repoPath}`)
+  } catch (err) {
+    const why = err instanceof Error ? err.message.split('\n')[0] : String(err)
+    throw new Error(`Gitリポジトリが見つかりません: ${repoPath}\n（${why}）`)
   }
 
   // ===== Step 1: commit metadata via simple-git log =====
-  const logResult = await git.log<DefaultLogFields>([
-    '--all', '--max-count=1000',
-  ])
+  const logResult = await git.log<DefaultLogFields>(['--all', maxCount])
 
   // ===== Step 2: parent hashes via raw (ASCII-only format) =====
   const rawParents = await git.raw([
     'log', '--all',
     '--format=%H %P',
-    '--max-count=1000',
+    maxCount,
   ])
 
   const parentMap = new Map<string, string[]>()
@@ -89,7 +92,7 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
   const rawRefs = await git.raw([
     'log', '--all',
     '--format=%H %D',
-    '--max-count=1000',
+    maxCount,
   ])
 
   const refMap = new Map<string, { branches: string[]; tags: string[] }>()
@@ -109,7 +112,7 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
   const rawBody = await git.raw([
     'log', '--all',
     '--format=%H|BODY|%b|ENDBODY|',
-    '--max-count=1000',
+    maxCount,
   ])
 
   const bodyMap = new Map<string, string>()
@@ -159,7 +162,7 @@ export async function analyzeGitRepo(repoPath: string): Promise<CommitNode[]> {
   }
 
   // ===== Step 5: file stats =====
-  await fillStats(git, commits)
+  await fillStats(git, commits, maxCount)
 
   return commits
 }
@@ -272,7 +275,7 @@ async function numstatInChunks(git: SimpleGit, hashes: string[]): Promise<string
   return out.join('\n')
 }
 
-async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
+async function fillStats(git: SimpleGit, commits: CommitNode[], maxCount: string): Promise<void> {
   let rawStats: string
   try {
     // numstat はファイル単位の増減行を返す。shortstat と違いファイル名が取れるため、
@@ -281,7 +284,7 @@ async function fillStats(git: SimpleGit, commits: CommitNode[]): Promise<void> {
       'log', '--all',
       '--format=%H',
       '--numstat',
-      '--max-count=1000',
+      maxCount,
     ])
   } catch (err) {
     // shallow clone (--depth)・部分クローン・オブジェクト欠損のリポジトリでは、
